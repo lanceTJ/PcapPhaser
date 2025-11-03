@@ -1,0 +1,12 @@
+# requirements.txt
+numpy>=1.26.0
+numba>=0.60.0
+pandas>=2.2.0
+scapy>=2.5.0  # For pcap parsing
+cupy>=13.0.0  # For GPU fallback in PSS
+h5py>=3.11.0  # For HDF5 matrix storage
+matplotlib>=3.9.0  # For visualization
+configparser>=7.1.0  # For INI config parsing
+pytest>=8.3.0  # For unit testing
+pyyaml>=6.0.2  # For YAML rules in labeling
+tqdm>=4.66.0  # For progress bars in processing
