@@ -3,7 +3,10 @@ numpy>=1.26.0
 numba>=0.60.0
 pandas>=2.2.0
 scapy>=2.5.0  # For pcap parsing
-cupy>=13.0.0  # For GPU fallback in PSS
+
+# cupy may need to choose version according to CUDA version
+# You can use the command to check:  find /usr -name "libcudart_static.a" 2>/dev/null
+cupy-cuda12x>=13.0.0  # For GPU fallback in PSS
 h5py>=3.11.0  # For HDF5 matrix storage
 matplotlib>=3.9.0  # For visualization
 configparser>=7.1.0  # For INI config parsing
