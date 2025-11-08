@@ -1,0 +1,10 @@
+# venvs
+/phase_venv/
+
+# pycaches
+**/__pycache__/
+
+# output files
+/src/tools/*.png
+/src/tools/*.txt
+
