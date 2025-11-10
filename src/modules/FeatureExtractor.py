@@ -1,30 +1,42 @@
 import os
 import numpy as np
+from typing import Union, List, Dict
 from scapy.all import PcapReader, IP, TCP
 from collections import defaultdict
 from numba import njit
 
 class FeatureExtractor:
     """
-    Base class for extracting packet-level features from PCAP files.
+    Class for extracting packet-level features from PCAP files.
     Handles flow separation based on CICFlowMeter standards and truncation.
+    Supports features: packet_length, inter_arrival_time, direction, up_down_rate.
+    Supports extracting multiple feature types in one pass.
     """
-    def __init__(self):
-        pass
-
-    def extract_features(self, pcap_path: str, feature_type: str, config: dict) -> dict:
+    def extract_features(self, pcap_path: str, feature_type: Union[str, List[str]], config: dict) -> Dict[str, dict]:
         """
-        Extract features for all flows in the PCAP.
+        Extract features for all flows in the PCAP, supporting single or multiple feature types.
         :param pcap_path: Path to PCAP file.
-        :param feature_type: Type of feature (e.g., 'packet_length').
+        :param feature_type: Single string or list of strings for feature types.
         :param config: Dict with 'pss' section containing 'max_flow_length' (default 10000) and 'timeout_sec' (default 64).
-        :return: Dict {flow_id: np.array(feature_seq)}.
+        :return: Dict {feature_type: {flow_id: np.array(feature_seq)}}, simplified if single type.
         """
+        if isinstance(feature_type, str):
+            feature_types = [feature_type]
+        else:
+            feature_types = feature_type
+        
+        supported_features = {'packet_length', 'inter_arrival_time', 'direction', 'up_down_rate'}
+        if not set(feature_types).issubset(supported_features):
+            raise ValueError(f"Unsupported features: {set(feature_types) - supported_features}")
+        
         max_flow_length = config.get('pss', {}).get('max_flow_length', 10000)
         timeout_sec = config.get('pss', {}).get('timeout_sec', 64)
         
-        # Use defaultdict(list) where each value is a list of flows (each flow is a list of features and timestamps)
-        flow_dict = defaultdict(list)  # key: tuple_str, value: list of {'features': [], 'timestamps': []}
+        # defaultdict(list) where each value is list of flows (each flow is dict with shared data: timestamps, lengths, directions, is_super_flow)
+        flow_dict = defaultdict(list)  # key: tuple_str
+        
+        needs_lengths = any(ft in {'packet_length', 'up_down_rate'} for ft in feature_types)
+        needs_directions = any(ft in {'direction', 'up_down_rate'} for ft in feature_types)
         
         with PcapReader(pcap_path) as reader:
             for pkt in reader:
@@ -37,155 +49,178 @@ class FeatureExtractor:
                 sport = pkt.sport if hasattr(pkt, 'sport') else 0
                 dport = pkt.dport if hasattr(pkt, 'dport') else 0
                 timestamp = float(pkt.time)
+                pkt_len = len(pkt)
                 
                 # Five-tuple key
                 tuple_key = f"{src_ip}-{dst_ip}-{sport}-{dport}-{proto}"
                 
-                # If no flows yet for this tuple, start a new one
+                # If no flows for this tuple, start new
                 if not flow_dict[tuple_key]:
-                    flow_dict[tuple_key].append({'features': [], 'timestamps': [], 'first_ts': timestamp})
+                    new_flow = {
+                        'timestamps': [],
+                        'is_super_flow': False,
+                        'first_ts': timestamp
+                    }
+                    if needs_lengths:
+                        new_flow['lengths'] = []
+                    if needs_directions:
+                        new_flow['directions'] = []
+                    flow_dict[tuple_key].append(new_flow)
                 
                 current_flow = flow_dict[tuple_key][-1]
                 prev_ts = current_flow['timestamps'][-1] if current_flow['timestamps'] else timestamp
-                prev_pkt = None  # For features needing previous packet
                 
                 # Check for new flow conditions
                 start_new_flow = False
-                if len(current_flow['features']) >= max_flow_length:
-                    start_new_flow = True  # Truncate: start new from current packet
-                elif (timestamp - prev_ts) > timeout_sec:
-                    start_new_flow = True  # Timeout: start new from current packet
+                if (timestamp - prev_ts) > timeout_sec:
+                    start_new_flow = True
                 
-                # Handle TCP FIN/RST: add current to old, start new for next
+                # Handle TCP FIN/RST
                 is_fin_rst = False
                 if TCP in pkt:
                     flags = pkt[TCP].flags
-                    if flags & (0x01 | 0x04):  # FIN (0x01) or RST (0x04)
+                    if flags & (0x01 | 0x04):  # FIN or RST
                         is_fin_rst = True
                 
+                # Check if current flow is super flow (use lengths size as proxy for feature length)
+                length_key = 'lengths' if needs_lengths else 'timestamps'  # Fallback to timestamps
+                current_len = len(current_flow.get(length_key, current_flow['timestamps']))
+                if current_len >= max_flow_length and not current_flow['is_super_flow']:
+                    current_flow['is_super_flow'] = True
+                
+                is_super_flow = current_flow['is_super_flow']
+                
                 if start_new_flow:
-                    # Start new flow and add current packet to it
-                    flow_dict[tuple_key].append({'features': [], 'timestamps': [], 'first_ts': timestamp})
+                    # Start new flow from current packet
+                    new_flow = {
+                        'timestamps': [],
+                        'is_super_flow': False,
+                        'first_ts': timestamp
+                    }
+                    if needs_lengths:
+                        new_flow['lengths'] = []
+                    if needs_directions:
+                        new_flow['directions'] = []
+                    flow_dict[tuple_key].append(new_flow)
                     current_flow = flow_dict[tuple_key][-1]
+                    is_super_flow = False
                 
-                # Compute feature value (subclass-specific)
-                if current_flow['features']:  # If not first packet in flow
-                    prev_pkt = {'len': len(current_flow['features'][-1]), 'ts': prev_ts}  # Simplified prev_pkt
-                feature_value = self.compute_feature(pkt, prev_pkt)
-                
-                # Append to current flow
-                current_flow['features'].append(feature_value)
+                # Always update timestamp for timeout checks
                 current_flow['timestamps'].append(timestamp)
                 
-                if is_fin_rst and not start_new_flow:
-                    # After adding current, start new for next packet
-                    flow_dict[tuple_key].append({'features': [], 'timestamps': [], 'first_ts': None})  # first_ts set on next pkt
+                if is_super_flow:
+                    # In super flow, do not update other data, but update timestamp (already done)
+                    # If FIN/RST, start new flow (do not add current to new)
+                    if is_fin_rst:
+                        new_flow = {
+                            'timestamps': [],
+                            'is_super_flow': False,
+                            'first_ts': None
+                        }
+                        if needs_lengths:
+                            new_flow['lengths'] = []
+                        if needs_directions:
+                            new_flow['directions'] = []
+                        flow_dict[tuple_key].append(new_flow)
+                    continue  # Skip other updates
+                
+                # Update shared data based on needs
+                if needs_lengths:
+                    current_flow['lengths'].append(pkt_len)
+                if needs_directions:
+                    direction = 1 if sport > dport else -1  # Simplified assumption
+                    current_flow['directions'].append(direction)
+                
+                # If FIN/RST and not super, start new after adding current
+                if is_fin_rst and not is_super_flow:
+                    new_flow = {
+                        'timestamps': [],
+                        'is_super_flow': False,
+                        'first_ts': None
+                    }
+                    if needs_lengths:
+                        new_flow['lengths'] = []
+                    if needs_directions:
+                        new_flow['directions'] = []
+                    flow_dict[tuple_key].append(new_flow)
         
-        # Flatten to {unique_flow_id: np.array(features)}
-        result = {}
-        for tuple_key, flows in flow_dict.items():
-            for idx, flow in enumerate(flows):
-                if not flow['features']:
-                    continue  # Skip empty flows
-                first_ts = flow['first_ts']
-                flow_id = f"{tuple_key}-{idx}-{int(first_ts * 1000)}"  # ms timestamp
-                result[flow_id] = np.array(flow['features'])
+        # Post-process: generate features for each type
+        all_results = {}
+        for ft in feature_types:
+            result = {}
+            for tuple_key, flows in flow_dict.items():
+                for idx, flow in enumerate(flows):
+                    if not flow['timestamps']:
+                        continue  # Skip empty
+                    first_ts = flow['first_ts'] or flow['timestamps'][0] if flow['timestamps'] else 0
+                    flow_id = f"{tuple_key}-{idx}-{int(first_ts * 1000)}"
+                    
+                    if ft == 'packet_length':
+                        features = np.array(flow.get('lengths', []))
+                    elif ft == 'direction':
+                        features = np.array(flow.get('directions', []))
+                    elif ft == 'inter_arrival_time':
+                        ts_array = np.array(flow['timestamps'])
+                        features = self.compute_iat(ts_array)
+                    elif ft == 'up_down_rate':
+                        ts_array = np.array(flow['timestamps'])
+                        iat = self.compute_iat(ts_array)
+                        lengths = np.array(flow.get('lengths', []))
+                        directions = np.array(flow.get('directions', []))
+                        epsilon = 1e-9
+                        features = (lengths / (iat + epsilon)) * directions
+                    
+                    if len(features) > 0:
+                        result[flow_id] = features
+            
+            all_results[ft] = result
+            
+            # Persist with writing flag
+            output_dir = os.path.join('feature_matrix', ft)
+            os.makedirs(output_dir, exist_ok=True)
+            output_path = os.path.join(output_dir, os.path.basename(pcap_path) + '.npz')
+            writing_flag = output_path + '.writing'
+            open(writing_flag, 'w').close()  # Create empty writing flag file
+            try:
+                np.savez(output_path, **result)  # Save dict as compressed NPZ
+            finally:
+                os.remove(writing_flag)  # Remove flag after write, even if error
         
-        # Persist to file
-        output_dir = os.path.join('feature_matrix', feature_type)
-        os.makedirs(output_dir, exist_ok=True)
-        output_path = os.path.join(output_dir, os.path.basename(pcap_path) + '.npz')
-        np.savez(output_path, **result)  # Save dict as compressed NPZ
-        
-        return result
-
-    def compute_feature(self, pkt, prev_pkt):
-        """
-        To be overridden by subclasses.
-        :param pkt: Current Scapy packet.
-        :param prev_pkt: Dict with info from previous packet (or None).
-        :return: Float or int feature value.
-        """
-        raise NotImplementedError
-
-class PacketLengthExtractor(FeatureExtractor):
-    """
-    Extracts packet length feature.
-    """
-    def compute_feature(self, pkt, prev_pkt):
-        return len(pkt)
-
-class IATExtractor(FeatureExtractor):
-    """
-    Extracts inter-arrival time (IAT). Uses Numba for diff computation post-flow.
-    Note: Since IAT needs sequence, override extract_features to compute after collecting timestamps.
-    """
-    def extract_features(self, pcap_path: str, feature_type: str, config: dict) -> dict:
-        # First collect timestamps per flow using base class logic, but set features to timestamps temporarily
-        temp_extractor = FeatureExtractor()
-        temp_result = temp_extractor.extract_features(pcap_path, feature_type, config)
-        
-        # Now compute IAT for each flow's timestamps
-        for flow_id, ts_array in temp_result.items():
-            temp_result[flow_id] = self.compute_iat(np.array(ts_array))
-        
-        # Persist as in base
-        output_dir = os.path.join('feature_matrix', feature_type)
-        os.makedirs(output_dir, exist_ok=True)
-        output_path = os.path.join(output_dir, os.path.basename(pcap_path) + '.npz')
-        np.savez(output_path, **temp_result)
-        
-        return temp_result
+        if len(feature_types) == 1:
+            return all_results[feature_types[0]]  # Simplify output if single type
+        return all_results
 
     @njit
     def compute_iat(self, ts_array: np.ndarray) -> np.ndarray:
+        """
+        Compute IAT with Numba.
+        """
         if len(ts_array) < 2:
             return np.array([0.0])
         iat = np.diff(ts_array)
-        return np.concatenate(([0.0], iat))  # Prepend 0 for first packet
+        return np.concatenate(([0.0], iat))
 
-    def compute_feature(self, pkt, prev_pkt):
-        # Temporarily return timestamp for collection
-        return float(pkt.time)
-
-class DirectionExtractor(FeatureExtractor):
-    """
-    Extracts direction: 1 for forward (src to dst), -1 for backward.
-    Assumes first packet defines forward direction.
-    """
-    def compute_feature(self, pkt, prev_pkt):
-        # Need flow context; simplified: assume src is client if sport > dport, else -1
-        if pkt.sport > pkt.dport:
-            return 1
-        else:
-            return -1
-
-class UpDownRateExtractor(FeatureExtractor):
-    """
-    Extracts up/down rate: len(pkt) / (IAT + epsilon), signed by direction.
-    Requires IAT, so similar to IATExtractor, compute post-flow.
-    """
-    def extract_features(self, pcap_path: str, feature_type: str, config: dict) -> dict:
-        # Collect lengths, timestamps, directions
-        temp_extractor = FeatureExtractor()
-        temp_result = temp_extractor.extract_features(pcap_path, feature_type, config)
-        
-        # For each flow, compute rates
-        epsilon = 1e-9
-        for flow_id, data_array in temp_result.items():
-            # Assume data_array temporarily holds [len, ts, direction] per packet
-            # But base compute_feature needs override; for demo, assume collected as structured array
-            # Simplified: re-parse or adjust base for multi-value
-            pass  # Implement similar to IAT, but compute len / (diff(ts) + eps) * sign(dir)
-        
-        # Persistence as above
-        return temp_result
-
-    def compute_feature(self, pkt, prev_pkt):
-        # Temporarily collect multiple: return [len(pkt), float(pkt.time), self.get_direction(pkt)]
-        pass  # Adjust base to handle list of values per packet if needed
-
-# Usage example (not part of class):
+# Usage example:
 # config = {'pss': {'max_flow_length': 10000, 'timeout_sec': 64}}
-# extractor = PacketLengthExtractor()
-# features = extractor.extract_features('path/to/pcap', 'packet_length', config)
+# extractor = FeatureExtractor()
+# features = extractor.extract_features('path/to/pcap.pcap', ['packet_length', 'inter_arrival_time'], config)
+# # features = {'packet_length': {...}, 'inter_arrival_time': {...}}
+
+if __name__ == '__main__':
+    # Config for testing: set small max_flow_length to trigger truncation
+    config = {
+        'pss': {
+            'max_flow_length': 5,  # Small value to test super flow truncation
+            'timeout_sec': 64
+        }
+    }
+
+    # Instantiate and call with all feature types
+    extractor = FeatureExtractor()
+    results = extractor.extract_features('/mnt/raid/luohaoran/cicids2018/SaP/phased_dataset_gen/tests/test.pcap', ['packet_length', 'inter_arrival_time', 'direction', 'up_down_rate'], config)
+
+    # Print results for verification: for each feature, show flow IDs and sequence lengths
+    for ft, res in results.items():
+        print(f"Feature: {ft}")
+        for flow_id, seq in res.items():
+            print(f"  Flow ID: {flow_id}, Sequence length: {len(seq)}")
