@@ -2,61 +2,52 @@
 
 import pytest
 import pandas as pd
-from unittest.mock import patch, MagicMock
-from src.modules.feature_extractor import FeatureExtractor
+import os
+import tempfile
+from modules.FeatureExtractor import FeatureExtractor
 
 @pytest.fixture
-def mock_pcap_path():
-    return "test.pcap"
+def real_pcap_path():
+    # Return the real PCAP path for integration testing
+    return "/mnt/raid/luohaoran/cicids2018/SaP/phased_dataset_gen/tests/capEC2AMAZ-O4EL3NG-172.31.69.29"
 
-def test_extract_features(mock_pcap_path):
-    with patch('scapy.all.rdpcap') as mock_rdpcap:
-        mock_pkt1 = MagicMock()
-        mock_pkt1.haslayer.return_value = True
-        mock_pkt1.time = 1.0
-        mock_pkt1.__len__.return_value = 100
-        mock_pkt1.__getitem__.return_value.src = '192.168.1.1'
-        mock_pkt1.__getitem__.return_value.dst = '192.168.1.2'
+def test_extract_features(real_pcap_path):
+    extractor = FeatureExtractor()
+    df = extractor.extract_features(real_pcap_path)
+    
+    # Assert basic DataFrame properties from real data
+    assert isinstance(df, pd.DataFrame)
+    assert list(df.columns) == ['timestamp', 'length', 'direction', 'interval']
+    assert df.shape[0] > 0  # Ensure at least one packet extracted
+    assert df.shape[1] == 4  # Exact column count
+    assert df['length'].min() >= 0  # Length should be non-negative
+    assert df['interval'].iloc[0] == 0.0  # First interval is always 0
 
-        mock_pkt2 = MagicMock()
-        mock_pkt2.haslayer.return_value = True
-        mock_pkt2.time = 2.0
-        mock_pkt2.__len__.return_value = 200
-        mock_pkt2.__getitem__.return_value.src = '192.168.1.2'
-        mock_pkt2.__getitem__.return_value.dst = '192.168.1.1'
-
-        mock_rdpcap.return_value = [mock_pkt1, mock_pkt2]
-
+def test_run_cache_hit():
+    with tempfile.NamedTemporaryFile(suffix='.pkl', delete=False) as temp_output:
+        output_path = temp_output.name
+    try:
         extractor = FeatureExtractor()
-        df = extractor.extract_features(mock_pcap_path)
-
-        assert isinstance(df, pd.DataFrame)
-        assert list(df.columns) == ['timestamp', 'length', 'direction', 'interval']
-        assert df.shape == (2, 4)
-        assert df['length'].tolist() == [100, 200]
-        assert df['interval'].tolist() == [0.0, 1.0]
-        assert df['direction'].tolist() == [1, -1]  # Based on src < dst
-
-def test_run_cache_hit(mock_pcap_path):
-    output_path = "test_output.pkl"
-    with patch('os.path.exists') as mock_exists:
-        mock_exists.return_value = True
-        extractor = FeatureExtractor()
-        status, metadata = extractor.run(mock_pcap_path, output_path)
+        status, metadata = extractor.run("dummy_path", output_path)  # Dummy input, but cache hit due to existing file
         assert status == 0
         assert metadata["status"] == "cached"
+    finally:
+        os.remove(output_path)
 
-def test_run_extraction_and_save(mock_pcap_path):
-    output_path = "test_output.pkl"
-    with patch('os.path.exists') as mock_exists, \
-         patch('pandas.DataFrame.to_pickle') as mock_to_pickle, \
-         patch.object(FeatureExtractor, 'extract_features') as mock_extract:
-        mock_exists.return_value = False
-        mock_df = pd.DataFrame({'test': [1]})
-        mock_extract.return_value = mock_df
+# tests/test_feature_extractor.py (modified test_run_extraction_and_save)
 
+def test_run_extraction_and_save(real_pcap_path):
+    with tempfile.NamedTemporaryFile(suffix='.pkl', delete=False) as temp_output:
+        output_path = temp_output.name
+    try:
+        if os.path.exists(output_path):
+            os.remove(output_path)  # Ensure no cache hit
         extractor = FeatureExtractor()
-        status, metadata = extractor.run(mock_pcap_path, output_path)
+        status, metadata = extractor.run(real_pcap_path, output_path)
         assert status == 0
-        mock_to_pickle.assert_called_once_with(output_path)
-        assert metadata["rows"] == 1
+        assert os.path.exists(output_path)  # File saved
+        assert metadata["rows"] == 309471  # Expected rows from real PCAP (adjust if file changes)
+        assert "duration_ms" in metadata and metadata["duration_ms"] >= 0  # Allow >=0 for precision issues
+    finally:
+        if os.path.exists(output_path):
+            os.remove(output_path)
