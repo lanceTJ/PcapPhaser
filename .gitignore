@@ -10,3 +10,5 @@
 
 # test input file
 /tests/cap*
+/tests/*.pcap
+
