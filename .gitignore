@@ -8,3 +8,5 @@
 /src/tools/*.png
 /src/tools/*.txt
 
+# test input file
+/tests/cap*
