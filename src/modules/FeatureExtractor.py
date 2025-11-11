@@ -5,6 +5,16 @@ from scapy.all import PcapReader, IP, TCP
 from collections import defaultdict
 from numba import njit
 
+@njit
+def compute_iat(ts_array: np.ndarray) -> np.ndarray:
+    """
+    Compute IAT with Numba.
+    """
+    if len(ts_array) < 2:
+        return np.array([0.0])
+    iat = np.diff(ts_array)
+    return np.concatenate((np.array([0.0]), iat))
+
 class FeatureExtractor:
     """
     Class for extracting packet-level features from PCAP files.
@@ -37,6 +47,7 @@ class FeatureExtractor:
         
         needs_lengths = any(ft in {'packet_length', 'up_down_rate'} for ft in feature_types)
         needs_directions = any(ft in {'direction', 'up_down_rate'} for ft in feature_types)
+        needs_timestamps = any(ft in {'inter_arrival_time', 'up_down_rate'} for ft in feature_types)
         
         with PcapReader(pcap_path) as reader:
             for pkt in reader:
@@ -161,10 +172,10 @@ class FeatureExtractor:
                         features = np.array(flow.get('directions', []))
                     elif ft == 'inter_arrival_time':
                         ts_array = np.array(flow['timestamps'])
-                        features = self.compute_iat(ts_array)
+                        features = compute_iat(ts_array)
                     elif ft == 'up_down_rate':
                         ts_array = np.array(flow['timestamps'])
-                        iat = self.compute_iat(ts_array)
+                        iat = compute_iat(ts_array)
                         lengths = np.array(flow.get('lengths', []))
                         directions = np.array(flow.get('directions', []))
                         epsilon = 1e-9
@@ -189,16 +200,6 @@ class FeatureExtractor:
         if len(feature_types) == 1:
             return all_results[feature_types[0]]  # Simplify output if single type
         return all_results
-
-    @njit
-    def compute_iat(self, ts_array: np.ndarray) -> np.ndarray:
-        """
-        Compute IAT with Numba.
-        """
-        if len(ts_array) < 2:
-            return np.array([0.0])
-        iat = np.diff(ts_array)
-        return np.concatenate(([0.0], iat))
 
 # Usage example:
 # config = {'pss': {'max_flow_length': 10000, 'timeout_sec': 64}}
