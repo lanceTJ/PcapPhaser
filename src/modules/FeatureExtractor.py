@@ -36,7 +36,7 @@ class FeatureExtractor:
         if not set(feature_types).issubset(supported_features):
             raise ValueError(f"Unsupported features: {set(feature_types) - supported_features}")
         
-        max_flow_length = config.get('pss', {}).get('max_flow_length', 10000)
+        max_flow_length = config.get('pss', {}).get('max_flow_length', 1000)
         timeout_sec = config.get('pss', {}).get('timeout_sec', 64)
         
         # Determine data needs based on features
@@ -61,11 +61,16 @@ class FeatureExtractor:
         """Process PCAP file iteratively and build flow dictionary."""
         flow_dict = defaultdict(list)
         with PcapReader(pcap_path) as reader:
+            pkt_num = 0
             for pkt in reader:
+                pkt_num += 1
                 if IP not in pkt:
                     continue
                 src_ip, dst_ip = pkt[IP].src, pkt[IP].dst
                 proto = pkt[IP].proto
+                if not hasattr(pkt, 'sport') or not hasattr(pkt, 'dport'):
+                    print(f'No sport and dport in packet {pkt_num}')
+                    continue
                 sport = pkt.sport if hasattr(pkt, 'sport') else 0
                 dport = pkt.dport if hasattr(pkt, 'dport') else 0
                 timestamp = float(pkt.time)
@@ -195,7 +200,7 @@ if __name__ == '__main__':
 
     # Instantiate and call with all feature types
     extractor = FeatureExtractor()
-    results = extractor.extract_features('/mnt/raid/luohaoran/cicids2018/SaP/phased_dataset_gen/tests/test.pcap', ['packet_length', 'inter_arrival_time', 'direction', 'up_down_rate'], config)
+    results = extractor.extract_features('/mnt/raid/luohaoran/cicids2018/SaP/phased_dataset_gen/tests/capEC2AMAZ-O4EL3NG-172.31.69.29', ['packet_length', 'inter_arrival_time', 'direction', 'up_down_rate'], config)
 
     # Print results for verification: for each feature, show flow IDs and sequence lengths
     for ft, res in results.items():
