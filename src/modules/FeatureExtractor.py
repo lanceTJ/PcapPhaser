@@ -69,7 +69,7 @@ class FeatureExtractor:
                 src_ip, dst_ip = pkt[IP].src, pkt[IP].dst
                 proto = pkt[IP].proto
                 if not hasattr(pkt, 'sport') or not hasattr(pkt, 'dport'):
-                    print(f'No sport and dport in packet {pkt_num}')
+                    print(f'No sport or dport in packet {pkt_num}, skip the packet')
                     continue
                 sport = pkt.sport if hasattr(pkt, 'sport') else 0
                 dport = pkt.dport if hasattr(pkt, 'dport') else 0
@@ -90,86 +90,90 @@ class FeatureExtractor:
         return flow_dict
 
     def _init_flow(self, flows_list: list, timestamp: float, needs_lengths: bool, needs_directions: bool):
-        """Initialize a new flow dictionary with required fields."""
-        new_flow = {
-            'timestamps': [],
-            'is_super_flow': False,
-            'first_ts': timestamp
-        }
-        if needs_lengths:
-            new_flow['lengths'] = []
-        if needs_directions:
-            new_flow['directions'] = []
-        flows_list.append(new_flow)
+            """Initialize a new flow dictionary with required fields."""
+            new_flow = {
+                'timestamps': [],
+                'is_super_flow': False,
+                'first_ts': timestamp,
+                'last_check_ts': timestamp if timestamp is not None else None
+            }
+            if needs_lengths:
+                new_flow['lengths'] = []
+            if needs_directions:
+                new_flow['directions'] = []
+            flows_list.append(new_flow)
 
     def _update_flow(self, current_flow: dict, pkt, timestamp: float, pkt_len: int, prev_ts: float, max_flow_length: int, timeout_sec: float, needs_lengths: bool, needs_directions: bool, flows_list: list):
-        """Update current flow with packet data, handling super flow and new flow starts."""
-        start_new_flow = (timestamp - prev_ts) > timeout_sec
-        is_fin_rst = False
-        if TCP in pkt:
-            flags = pkt[TCP].flags
-            if flags & (0x01 | 0x04):  # FIN or RST
-                is_fin_rst = True
-        
-        # Check super flow using appropriate length proxy
-        length_key = 'lengths' if needs_lengths else 'timestamps'
-        current_len = len(current_flow.get(length_key, current_flow['timestamps']))
-        if current_len >= max_flow_length and not current_flow['is_super_flow']:
-            current_flow['is_super_flow'] = True
-        
-        is_super_flow = current_flow['is_super_flow']
-        
-        if start_new_flow:
-            self._init_flow(flows_list, timestamp, needs_lengths, needs_directions)
-            current_flow = flows_list[-1]
-            is_super_flow = False
-        
-        # Always update timestamp
-        current_flow['timestamps'].append(timestamp)
-        
-        if is_super_flow:
-            if is_fin_rst:
-                self._init_flow(flows_list, None, needs_lengths, needs_directions)
-            return  # Skip further updates
-        
-        # Update data if not super flow
-        if needs_lengths:
-            current_flow['lengths'].append(pkt_len)
-        if needs_directions:
-            direction = 1 if pkt.sport > pkt.dport else -1
-            current_flow['directions'].append(direction)
-        
-        if is_fin_rst and not is_super_flow:
-            self._init_flow(flows_list, None, needs_lengths, needs_directions)
+            """Update current flow with packet data, handling super flow and new flow starts."""
+            # Use last_check_ts for checks
+            prev_check_ts = current_flow['last_check_ts'] if current_flow['last_check_ts'] is not None else timestamp
+            start_new_flow = (timestamp - prev_check_ts) > timeout_sec
+            is_fin_rst = False
+            if TCP in pkt:
+                flags = pkt[TCP].flags
+                if flags & (0x01 | 0x04):  # FIN or RST
+                    is_fin_rst = True
+            
+            # Check super flow using lengths size as proxy (or timestamps if no lengths)
+            length_key = 'lengths' if needs_lengths else 'timestamps'
+            current_len = len(current_flow.get(length_key, []))
+            if current_len >= max_flow_length and not current_flow['is_super_flow']:
+                current_flow['is_super_flow'] = True
+            
+            is_super_flow = current_flow['is_super_flow']
+            
+            if start_new_flow:
+                self._init_flow(flows_list, timestamp, needs_lengths, needs_directions)
+                current_flow = flows_list[-1]
+                is_super_flow = False
+            
+            # Always update last_check_ts for future checks
+            current_flow['last_check_ts'] = timestamp
+            
+            if is_super_flow:
+                if is_fin_rst:
+                    self._init_flow(flows_list, timestamp, needs_lengths, needs_directions)  # Start new from current pkt if FIN in super
+                return  # Skip data updates
+            
+            # Update timestamps and other data if not super flow
+            current_flow['timestamps'].append(timestamp)
+            if needs_lengths:
+                current_flow['lengths'].append(pkt_len)
+            if needs_directions:
+                direction = 1 if pkt.sport > pkt.dport else -1
+                current_flow['directions'].append(direction)
+            
+            if is_fin_rst and not is_super_flow:
+                self._init_flow(flows_list, None, needs_lengths, needs_directions)  
 
     def _post_process_flows_for_feature(self, flow_dict: defaultdict, ft: str, needs_lengths: bool, needs_directions: bool) -> dict:
-        """Post-process flows to compute feature-specific sequences."""
-        result = {}
-        for tuple_key, flows in flow_dict.items():
-            for idx, flow in enumerate(flows):
-                if not flow['timestamps']:
-                    continue
-                first_ts = flow['first_ts'] or flow['timestamps'][0] if flow['timestamps'] else 0
-                flow_id = f"{tuple_key}-{idx}-{int(first_ts * 1000)}"
-                
-                if ft == 'packet_length':
-                    features = np.array(flow.get('lengths', []))
-                elif ft == 'direction':
-                    features = np.array(flow.get('directions', []))
-                elif ft == 'inter_arrival_time':
-                    ts_array = np.array(flow['timestamps'])
-                    features = compute_iat(ts_array)
-                elif ft == 'up_down_rate':
-                    ts_array = np.array(flow['timestamps'])
-                    iat = compute_iat(ts_array)
-                    lengths = np.array(flow.get('lengths', []))
-                    directions = np.array(flow.get('directions', []))
-                    epsilon = 1e-9
-                    features = (lengths / (iat + epsilon)) * directions
-                
-                if len(features) > 0:
-                    result[flow_id] = features
-        return result
+            """Post-process flows to compute feature-specific sequences."""
+            result = {}
+            for tuple_key, flows in flow_dict.items():
+                for idx, flow in enumerate(flows):
+                    if not flow['timestamps']:
+                        continue
+                    first_ts = flow['first_ts'] or flow['timestamps'][0] if flow['timestamps'] else 0
+                    flow_id = f"{tuple_key}-{idx}-{int(first_ts * 1000)}"
+                    
+                    if ft == 'packet_length':
+                        features = np.array(flow.get('lengths', []))
+                    elif ft == 'direction':
+                        features = np.array(flow.get('directions', []))
+                    elif ft == 'inter_arrival_time':
+                        ts_array = np.array(flow['timestamps'])
+                        features = compute_iat(ts_array)
+                    elif ft == 'up_down_rate':
+                        ts_array = np.array(flow['timestamps'])
+                        iat = compute_iat(ts_array)
+                        lengths = np.array(flow.get('lengths', []))
+                        directions = np.array(flow.get('directions', []))
+                        epsilon = 1e-9
+                        features = (lengths / (iat + epsilon)) * directions
+                    
+                    if len(features) > 0:
+                        result[flow_id] = features
+            return result
 
     def _save_feature_data(self, result: dict, pcap_path: str, ft: str, output_base_dir: str):
         """Save feature data to .npz with writing flag for integrity."""
@@ -193,7 +197,7 @@ if __name__ == '__main__':
     # Config for testing: set small max_flow_length to trigger truncation
     config = {
         'pss': {
-            'max_flow_length': 5,  # Small value to test super flow truncation
+            'max_flow_length': 50,  # Small value to test super flow truncation
             'timeout_sec': 64
         }
     }
