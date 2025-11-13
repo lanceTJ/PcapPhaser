@@ -1,3 +1,5 @@
+import argparse
+import sys
 import os
 import numpy as np
 from typing import Union, List, Dict
@@ -213,13 +215,42 @@ if __name__ == '__main__':
         }
     }
 
-    # Instantiate and call with all feature types
-    extractor = FeatureExtractor()
-    # results = extractor.extract_features('/mnt/raid/luohaoran/cicids2018/SaP/phased_dataset_gen/tests/test.pcap', ['packet_length', 'inter_arrival_time', 'direction', 'up_down_rate'], config, '/mnt/raid/luohaoran/cicids2018/SaP/phased_dataset_gen/workspace/test/feature_matrix')
-    results = extractor.extract_features('/mnt/raid/luohaoran/cicids2018/SaP/phased_dataset_gen/tests/capEC2AMAZ-O4EL3NG-172.31.69.29', ['packet_length', 'inter_arrival_time', 'direction', 'up_down_rate'], config, '/mnt/raid/luohaoran/cicids2018/SaP/phased_dataset_gen/workspace/test/feature_matrix')
+    # parse command-line parameters and optionally run immediately
 
-    # Print results for verification: for each feature, show flow IDs and sequence lengths
-    # for ft, res in results.items():
-    #     print(f"Feature: {ft}")
-    #     for flow_id, seq in res.items():
-    #         print(f"  Flow ID: {flow_id}, Sequence length: {len(seq)}")
+    parser = argparse.ArgumentParser(description='Extract features from a PCAP file.')
+    parser.add_argument('-p', '--pcap', type=str, help='Path to PCAP file (if omitted, script will continue to the hard-coded call below).')
+    parser.add_argument('-f', '--features', type=str, default='packet_length,inter_arrival_time,direction,up_down_rate',
+                        help='Comma-separated list of feature types (packet_length, inter_arrival_time, direction, up_down_rate).')
+    parser.add_argument('-o', '--output', type=str, default='workspace/test/feature_matrix',
+                        help='Output base directory for feature matrices.')
+    parser.add_argument('--max_flow_length', type=int, default=config['pss']['max_flow_length'],
+                        help='Maximum flow length (super flow threshold).')
+    parser.add_argument('--min_flow_length', type=int, default=config['pss']['min_flow_length'],
+                        help='Minimum flow length to keep.')
+    parser.add_argument('--timeout_sec', type=float, default=config['pss']['timeout_sec'],
+                        help='Flow timeout in seconds.')
+    parser.add_argument('--run', action='store_true', help='If set and --pcap provided, run extraction now and exit (skips the hard-coded call below).')
+
+    args = parser.parse_args()
+
+    # apply CLI config overrides
+    config['pss']['max_flow_length'] = args.max_flow_length
+    config['pss']['min_flow_length'] = args.min_flow_length
+    config['pss']['timeout_sec'] = args.timeout_sec
+
+    feature_list = [ft.strip() for ft in args.features.split(',') if ft.strip()]
+
+    if args.pcap and args.run:
+        extractor = FeatureExtractor()
+        results = extractor.extract_features(args.pcap, feature_list, config, args.output)
+        # print brief summary
+        if isinstance(results, dict):
+            for ft, res in (results.items() if isinstance(results, dict) and any(isinstance(v, dict) for v in results.values()) else [(feature_list[0], results)]):
+                print(f'Feature "{ft}": {len(res)} flows extracted, saved under {os.path.join(args.output, ft)}')
+        sys.exit(0)
+
+        # Print results for verification: for each feature, show flow IDs and sequence lengths
+        # for ft, res in results.items():
+        #     print(f"Feature: {ft}")
+        #     for flow_id, seq in res.items():
+        #         print(f"  Flow ID: {flow_id}, Sequence length: {len(seq)}")
