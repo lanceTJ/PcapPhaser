@@ -62,7 +62,7 @@ class FeatureExtractor:
         return all_results[feature_types[0]] if len(feature_types) == 1 else all_results
 
     def _process_pcap_and_build_flows(self, pcap_path: str, max_flow_length: int, timeout_sec: float, needs_lengths: bool, needs_directions: bool) -> defaultdict:
-        """Process PCAP file iteratively and build flow dictionary."""
+        """Process PCAP file iteratively and build flow dictionary with bidirectional aggregation."""
         flow_dict = defaultdict(list)
         with PcapReader(pcap_path) as reader:
             for pkt in reader:
@@ -78,27 +78,32 @@ class FeatureExtractor:
 
                 timestamp = float(pkt.time)
                 pkt_len = len(pkt)
-                tuple_key = f"{src_ip}-{dst_ip}-{sport}-{dport}-{proto}"
+                # Normalize key for bidirectional: sort IPs, min-max ports
+                ips = sorted([src_ip, dst_ip])
+                ports = sorted([sport, dport])
+                tuple_key = f"{ips[0]}-{ips[1]}-{ports[0]}-{ports[1]}-{proto}"
                 
                 # Initialize new flow if none exists
                 if not flow_dict[tuple_key]:
-                    self._init_flow(flow_dict[tuple_key], timestamp, needs_lengths, needs_directions)
+                    self._init_flow(flow_dict[tuple_key], timestamp, needs_lengths, needs_directions, src_ip, sport)  # Pass src for direction init
                 
                 current_flow = flow_dict[tuple_key][-1]
                 prev_ts = current_flow['last_check_ts'] if current_flow['last_check_ts'] is not None else timestamp
                 
                 # Check conditions and update flow
-                self._update_flow(current_flow, pkt, timestamp, pkt_len, prev_ts, max_flow_length, timeout_sec, needs_lengths, needs_directions, flow_dict[tuple_key])
+                self._update_flow(current_flow, pkt, timestamp, pkt_len, prev_ts, max_flow_length, timeout_sec, needs_lengths, needs_directions, flow_dict[tuple_key], src_ip, sport)
         
         return flow_dict
 
-    def _init_flow(self, flows_list: list, timestamp: float, needs_lengths: bool, needs_directions: bool):
-        """Initialize a new flow dictionary with required fields."""
+    def _init_flow(self, flows_list: list, timestamp: float, needs_lengths: bool, needs_directions: bool, init_src_ip: str, init_sport: int):
+        """Initialize a new flow dictionary with required fields, including initial direction reference."""
         new_flow = {
             'timestamps': [],
             'is_super_flow': False,
             'first_ts': timestamp,
-            'last_check_ts': timestamp if timestamp is not None else None
+            'last_check_ts': timestamp if timestamp is not None else None,
+            'init_src_ip': init_src_ip,  # For determining forward direction
+            'init_sport': init_sport
         }
         if needs_lengths:
             new_flow['lengths'] = []
@@ -106,8 +111,8 @@ class FeatureExtractor:
             new_flow['directions'] = []
         flows_list.append(new_flow)
 
-    def _update_flow(self, current_flow: dict, pkt, timestamp: float, pkt_len: int, prev_ts: float, max_flow_length: int, timeout_sec: float, needs_lengths: bool, needs_directions: bool, flows_list: list):
-        """Update current flow with packet data, handling super flow and new flow starts."""
+    def _update_flow(self, current_flow: dict, pkt, timestamp: float, pkt_len: int, prev_ts: float, max_flow_length: int, timeout_sec: float, needs_lengths: bool, needs_directions: bool, flows_list: list, curr_src_ip: str, curr_sport: int):
+        """Update current flow with packet data, handling super flow and new flow starts, with bidirectional direction."""
         start_new_flow = (timestamp - prev_ts) > timeout_sec
         is_fin_rst = False
         if TCP in pkt:
@@ -124,7 +129,7 @@ class FeatureExtractor:
         is_super_flow = current_flow['is_super_flow']
         
         if start_new_flow:
-            self._init_flow(flows_list, timestamp, needs_lengths, needs_directions)
+            self._init_flow(flows_list, timestamp, needs_lengths, needs_directions, curr_src_ip, curr_sport)
             current_flow = flows_list[-1]
             is_super_flow = False
         
@@ -133,7 +138,7 @@ class FeatureExtractor:
         
         if is_super_flow:
             if is_fin_rst:
-                self._init_flow(flows_list, timestamp, needs_lengths, needs_directions)  # Start new from current pkt if FIN in super
+                self._init_flow(flows_list, timestamp, needs_lengths, needs_directions, curr_src_ip, curr_sport)  # Start new from current pkt if FIN in super
             return  # Skip data updates
         
         # Update timestamps and other data if not super flow
@@ -141,25 +146,21 @@ class FeatureExtractor:
         if needs_lengths:
             current_flow['lengths'].append(pkt_len)
         if needs_directions:
-            direction = 1 if pkt.sport > pkt.dport else -1
+            # Determine direction relative to initial packet
+            is_forward = (curr_src_ip == current_flow['init_src_ip'] and curr_sport == current_flow['init_sport'])
+            direction = 1 if is_forward else -1
             current_flow['directions'].append(direction)
         
         if is_fin_rst and not is_super_flow:
-            self._init_flow(flows_list, None, needs_lengths, needs_directions)
+            self._init_flow(flows_list, None, needs_lengths, needs_directions, None, None)  # None for new flow init
 
     def _post_process_flows_for_feature(self, flow_dict: defaultdict, ft: str, needs_lengths: bool, needs_directions: bool, min_flow_length: int) -> dict:
         """Post-process flows to compute feature-specific sequences, filtering short flows."""
         result = {}
-        short_flow_count = 0
-        flow_count = 0
         for tuple_key, flows in flow_dict.items():
             for idx, flow in enumerate(flows):
-                if not flow['timestamps']:
+                if not flow['timestamps'] or len(flow['timestamps']) < min_flow_length:
                     continue  # Skip empty or short flows
-                flow_count += 1
-                if  len(flow['timestamps']) < min_flow_length:
-                    short_flow_count += 1
-                    continue
                 first_ts = flow['first_ts'] or flow['timestamps'][0] if flow['timestamps'] else 0
                 flow_id = f"{tuple_key}-{idx}-{int(first_ts * 1000)}"
                 
@@ -180,7 +181,6 @@ class FeatureExtractor:
                 
                 if len(features) > 0:
                     result[flow_id] = features
-        # print(f'All flow: {flow_count}, Short Flow: {short_flow_count}.')
         return result
 
     def _save_feature_data(self, result: dict, pcap_path: str, ft: str, output_base_dir: str) -> str:
@@ -200,7 +200,7 @@ class FeatureExtractor:
         return output_path
 
 # Usage example:
-# config = {'pss': {'max_flow_length': 10000, 'min_flow_length': 3, 'timeout_sec': 64}}
+# config = {'pss': {'max_flow_length': 1000, 'min_flow_length': 3, 'timeout_sec': 64}}
 # extractor = FeatureExtractor()
 # features = extractor.extract_features('path/to/pcap.pcap', ['packet_length', 'inter_arrival_time'], config, output_base_dir='custom_matrix')
 # # features = {'packet_length': {...}, 'inter_arrival_time': {...}}
