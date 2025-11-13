@@ -176,8 +176,9 @@ class FeatureExtractor:
                     iat = compute_iat(ts_array)
                     lengths = np.array(flow.get('lengths', []))
                     directions = np.array(flow.get('directions', []))
-                    epsilon = 1e-9
-                    features = (lengths / (iat + epsilon)) * directions
+                    epsilon = 1e-6  # To avoid division by zero
+                    features = (lengths / (iat + epsilon)) * directions 
+                    features[0] = 0 # First packet IAT is zero, so rate is set to 0
                 
                 if len(features) > 0:
                     result[flow_id] = features
