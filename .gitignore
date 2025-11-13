@@ -7,8 +7,12 @@
 # output files
 /src/tools/*.png
 /src/tools/*.txt
+/src/modules/feature_matrix/
+/tests/verify_results/
 
 # test input file
 /tests/cap*
 /tests/*.pcap
 
+# workspace
+/workspace/
