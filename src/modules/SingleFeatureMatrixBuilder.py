@@ -8,21 +8,20 @@ from numba import njit, prange
 
 @njit(parallel=True, fastmath=True)
 def compute_matrices(seq: np.ndarray, max_len: int, lambda_value: float = 1e-3) -> (np.ndarray, np.ndarray, np.ndarray):
+    """
+    Compute U (mean), M (M2), J (dissimilarity score) matrices using Welford's method.
+    J[s,t] = 1 / ( (M[s,t] / (t-s)) + lambda_value ) for t > s; for t == s, J = 1 / lambda_value.
+    Only upper triangular (t >= s) is computed; lower is zero.
+    """
     n = min(len(seq), max_len)
-    U = np.empty((n, n), dtype=np.float64)
-    M = np.empty((n, n), dtype=np.float64)
-    J = np.empty((n, n), dtype=np.float64)
+    U = np.zeros((n, n), dtype=np.float64)
+    M = np.zeros((n, n), dtype=np.float64)
+    J = np.zeros((n, n), dtype=np.float64)
 
     for s in prange(n):
         count = 0
         mean = 0.0
         m2 = 0.0
-
-        # The lower left part of the diagonal can be filled with zeros or ignored
-        for t in range(s):
-            U[s, t] = 0.0
-            M[s, t] = 0.0
-            J[s, t] = 0.0
 
         for t in range(s, n):
             x = seq[t]
@@ -35,9 +34,11 @@ def compute_matrices(seq: np.ndarray, max_len: int, lambda_value: float = 1e-3) 
             U[s, t] = mean
             M[s, t] = m2
             if t > s:
-                J[s, t] = m2 / (t - s)
+                variance = m2 / (t - s) if (t - s) > 0 else 0.0
+                J[s, t] = 1.0 / (variance + lambda_value)
             else:
-                J[s, t] = 0.0   # Or NaN, since J is not defined for single element
+                J[s, t] =  0.0  # Set to 0.0 for t == s
+
     return U, M, J
 
 class SingleFeatureMatrixBuilder:
@@ -50,7 +51,7 @@ class SingleFeatureMatrixBuilder:
         """
         :param config: Dict with 'pss' section containing optional 'allowed_feature_names' (list of str), 'lambda_dict' (dict of str to float), and 'max_flow_length' (int, default 1000).
         """
-        # Read allowed_feature_names、 lambda_dict and max_flow_length from config if provided
+        # Read allowed_feature_names, lambda_dict and max_flow_length from config if provided
         D_allowed_feature_names = {'packet_length', 'inter_arrival_time', 'up_down_ratio', 'direction'}
         D_lambda_dict = {'packet_length': 1e-3, 'inter_arrival_time': 1e-3, 'up_down_ratio': 1e-3, 'direction': 1e-3}
         D_max_flow_length = 1000
@@ -68,7 +69,6 @@ class SingleFeatureMatrixBuilder:
         Build matrices for all flows in the feature data.
         :param feature_data: Dict {flow_id: np.array(seq)} from FeatureExtractor.
         :param feature_type: String for feature type (e.g., 'packet_length').
-        :param config: Dict with 'pss' section containing 'max_flow_length' (default 1000).
         :param output_base_dir: Base directory for output (default 'feature_matrix').
         :param store_file_name: File name for storing the matrices (default 'default_feature_matrix_filename').
         :param store: Whether to store the results to disk (default True).
@@ -121,7 +121,7 @@ class SingleFeatureMatrixBuilder:
 # extractor = FeatureExtractor()
 # feature_data = extractor.extract_features('path/to/pcap.pcap', 'packet_length', config)['packet_length']
 # builder = SingleFeatureMatrixBuilder()
-# matrices = builder.build_matrices(feature_data, 'packet_length', config)
+# matrices = builder.build_matrices(feature_data, 'packet_length')
 
 if __name__ == '__main__':
     # Config for testing
