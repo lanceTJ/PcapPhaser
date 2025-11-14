@@ -5,12 +5,12 @@ import argparse
 # Parse command-line arguments for flexibility
 parser = argparse.ArgumentParser(description="Verify and print contents of .npz files from feature_matrix.")
 parser.add_argument('--feature_type', type=str, required=True, help="Feature type (e.g., 'packet_length')")
-parser.add_argument('--pcap_name', type=str, default='test.npz', help="PCAP name with .npz extension (default: test.npz)")
+parser.add_argument('--npz_name', type=str, default='test.npz', help="PCAP name with .npz extension (default: test.npz)")
 parser.add_argument('--base_dir', type=str, default='feature_matrix', help="Base directory for feature_matrix (default: feature_matrix)")
 args = parser.parse_args()
 
 # Construct the full path to the .npz file
-npz_path = os.path.join(args.base_dir, args.feature_type, args.pcap_name)
+npz_path = os.path.join(args.base_dir, args.feature_type, args.npz_name)
 
 # Check if the file exists
 if not os.path.exists(npz_path):
@@ -36,4 +36,4 @@ for flow_id in data:
 
 
 
-# python verify_npz.py --feature_type packet_length --pcap_name test.pcap.npz
+# python verify_npz.py --feature_type packet_length --npz_name test.pcap.npz
