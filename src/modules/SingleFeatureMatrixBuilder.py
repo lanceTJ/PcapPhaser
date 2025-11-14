@@ -46,13 +46,15 @@ class SingleFeatureMatrixBuilder:
     Computes U (mean), M (M2), J (dissimilarity) using Welford's method with Numba acceleration.
     Supports saving to .npz with integrity flag.
     """
-    def build_matrices(self, feature_data: Dict[str, np.ndarray], feature_type: str, config: dict, output_base_dir: str = 'feature_matrix', store: bool = True) -> Dict[str, dict]:
+    def build_matrices(self, feature_data: Dict[str, np.ndarray], feature_type: str, config: dict, output_base_dir: str = 'feature_matrix', store_file_name: str = 'default_feature_matrix_filename', store: bool = True) -> Dict[str, dict]:
         """
         Build matrices for all flows in the feature data.
         :param feature_data: Dict {flow_id: np.array(seq)} from FeatureExtractor.
         :param feature_type: String for feature type (e.g., 'packet_length').
         :param config: Dict with 'pss' section containing 'max_flow_length' (default 1000).
         :param output_base_dir: Base directory for output (default 'feature_matrix').
+        :param store_file_name: File name for storing the matrices (default 'default_feature_matrix_filename').
+        :param store: Whether to store the results to disk (default True).
         :return: Dict {flow_id: {'U': np.array, 'M': np.array, 'J': np.array}}.
         """
         max_flow_length = config.get('pss', {}).get('max_flow_length', 1000)
@@ -66,17 +68,17 @@ class SingleFeatureMatrixBuilder:
         
         print(f'{len(results)} flow matrices for {feature_type} were computed and saved to {os.path.join(output_base_dir, feature_type)}')
         if store:
-            self._save_matrices(results, feature_type, output_base_dir)
+            self._save_matrices(results, feature_type, output_base_dir, store_file_name)
         
         return results
 
-    def _save_matrices(self, results: Dict[str, dict], feature_type: str, output_base_dir: str) -> str:
+    def _save_matrices(self, results: Dict[str, dict], feature_type: str, output_base_dir: str, store_file_name: str) -> str:
         """
         Save matrices to .npz with writing flag for integrity.
         """
         output_dir = os.path.join(output_base_dir, feature_type)
         os.makedirs(output_dir, exist_ok=True)
-        output_path = os.path.join(output_dir, f'{feature_type}_matrices.npz')
+        output_path = os.path.join(output_dir, f'{store_file_name}_matrices.npz')
         writing_flag = output_path + '.writing'
         success = False
         open(writing_flag, 'w').close()  # Create writing flag
@@ -118,6 +120,6 @@ if __name__ == '__main__':
         feature_data = np.load(args.input_npz, allow_pickle=True)
         feature_data = {k: v for k, v in feature_data.items()}  # Convert to dict
         builder = SingleFeatureMatrixBuilder()
-        results = builder.build_matrices(feature_data, args.feature_type, config, args.output)
+        results = builder.build_matrices(feature_data, args.feature_type, config, args.output, args.input_npz[:-4], store=True)
         print(f'Feature "{args.feature_type}": {len(results)} flow matrices built, saved under {os.path.join(args.output, args.feature_type)}')
         sys.exit(0)
