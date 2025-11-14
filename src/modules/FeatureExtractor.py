@@ -24,7 +24,7 @@ class FeatureExtractor:
     Supports features: packet_length, inter_arrival_time, direction, up_down_rate.
     Supports extracting multiple feature types in one pass.
     """
-    def extract_features(self, pcap_path: str, feature_type: Union[str, List[str]], config: dict, output_base_dir: str = 'feature_matrix') -> Dict[str, dict]:
+    def extract_features(self, pcap_path: str, feature_type: Union[str, List[str]], config: dict, output_base_dir: str = 'feature_matrix', store: bool = True) -> Dict[str, dict]:
         """
         Extract features for all flows in the PCAP, supporting single or multiple feature types.
         :param pcap_path: Path to PCAP file.
@@ -56,8 +56,9 @@ class FeatureExtractor:
             result = self._post_process_flows_for_feature(flow_dict, ft, needs_lengths, needs_directions, min_flow_length)
             all_results[ft] = result
             print(f'{len(result)} flow records\' {ft} were writed to file {os.path.join(output_base_dir, ft)}')
-            # Save the result
-            self._save_feature_data(result, pcap_path, ft, output_base_dir)
+            # If needed, save the result
+            if store:
+                self._save_feature_data(result, pcap_path, ft, output_base_dir)
         
         return all_results[feature_types[0]] if len(feature_types) == 1 else all_results
 

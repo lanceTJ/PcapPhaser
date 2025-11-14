@@ -46,7 +46,7 @@ class SingleFeatureMatrixBuilder:
     Computes U (mean), M (M2), J (dissimilarity) using Welford's method with Numba acceleration.
     Supports saving to .npz with integrity flag.
     """
-    def build_matrices(self, feature_data: Dict[str, np.ndarray], feature_type: str, config: dict, output_base_dir: str = 'feature_matrix') -> Dict[str, dict]:
+    def build_matrices(self, feature_data: Dict[str, np.ndarray], feature_type: str, config: dict, output_base_dir: str = 'feature_matrix', store: bool = True) -> Dict[str, dict]:
         """
         Build matrices for all flows in the feature data.
         :param feature_data: Dict {flow_id: np.array(seq)} from FeatureExtractor.
@@ -65,7 +65,8 @@ class SingleFeatureMatrixBuilder:
             results[flow_id] = {'U': U, 'M': M, 'J': J}
         
         print(f'{len(results)} flow matrices for {feature_type} were computed and saved to {os.path.join(output_base_dir, feature_type)}')
-        self._save_matrices(results, feature_type, output_base_dir)
+        if store:
+            self._save_matrices(results, feature_type, output_base_dir)
         
         return results
 
