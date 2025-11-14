@@ -6,39 +6,38 @@ from typing import Dict
 from collections import defaultdict
 from numba import njit, prange
 
-@njit
-def welford_update(existing_count: int, existing_mean: float, existing_m2: float, new_value: float) -> tuple:
-    """
-    Welford's online update for mean and M2 (sum of squared differences).
-    Returns updated count, mean, M2.
-    """
-    count = existing_count + 1
-    delta = new_value - existing_mean
-    mean = existing_mean + delta / count
-    delta2 = new_value - mean
-    m2 = existing_m2 + delta * delta2
-    return count, mean, m2
-
-@njit(parallel=True)
-def compute_matrices(seq: np.ndarray, max_len: int) -> tuple:
-    """
-    Compute upper triangular matrices U (mean), M (M2), J (normalized variance) for sequence using Welford.
-    Limits to max_len if longer.
-    """
+@njit(parallel=True, fastmath=True)
+def compute_matrices(seq: np.ndarray, max_len: int):
     n = min(len(seq), max_len)
-    U = np.zeros((n, n), dtype=np.float64)
-    M = np.zeros((n, n), dtype=np.float64)
-    J = np.zeros((n, n), dtype=np.float64)
-    
+    U = np.empty((n, n), dtype=np.float64)
+    M = np.empty((n, n), dtype=np.float64)
+    J = np.empty((n, n), dtype=np.float64)
+
     for s in prange(n):
-        count, mean, m2 = 0, 0.0, 0.0
+        count = 0
+        mean = 0.0
+        m2 = 0.0
+
+        # The lower left part of the diagonal can be filled with zeros or ignored
+        for t in range(s):
+            U[s, t] = 0.0
+            M[s, t] = 0.0
+            J[s, t] = 0.0
+
         for t in range(s, n):
-            count, mean, m2 = welford_update(count, mean, m2, seq[t])
+            x = seq[t]
+            count += 1
+            delta = x - mean
+            mean += delta / count
+            delta2 = x - mean
+            m2 += delta * delta2
+
             U[s, t] = mean
             M[s, t] = m2
             if t > s:
-                J[s, t] = m2 / (t - s)  # Normalized variance as dissimilarity score
-    
+                J[s, t] = m2 / (t - s)
+            else:
+                J[s, t] = 0.0   # Or NaN, since J is not defined for single element
     return U, M, J
 
 class SingleFeatureMatrixBuilder:
