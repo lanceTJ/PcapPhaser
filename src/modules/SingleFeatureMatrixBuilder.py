@@ -48,8 +48,7 @@ class SingleFeatureMatrixBuilder:
     """
     def __init__(self, config: dict = None):
         """
-        :param allowed_feature_names: Optional list of allowed feature names.
-        :param lambda_dict: Optional dict {feature_type: lambda_value} for weighting.
+        :param config: Dict with 'pss' section containing optional 'allowed_feature_names' (list of str), 'lambda_dict' (dict of str to float), and 'max_flow_length' (int, default 1000).
         """
         # Read allowed_feature_names、 lambda_dict and max_flow_length from config if provided
         allowed_feature_names = None
