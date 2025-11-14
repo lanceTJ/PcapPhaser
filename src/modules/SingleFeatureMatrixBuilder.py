@@ -51,16 +51,17 @@ class SingleFeatureMatrixBuilder:
         :param config: Dict with 'pss' section containing optional 'allowed_feature_names' (list of str), 'lambda_dict' (dict of str to float), and 'max_flow_length' (int, default 1000).
         """
         # Read allowed_feature_names、 lambda_dict and max_flow_length from config if provided
-        allowed_feature_names = None
-        lambda_dict = None
-        max_flow_length = None
+        D_allowed_feature_names = {'packet_length', 'inter_arrival_time', 'up_down_ratio', 'direction'}
+        D_lambda_dict = {'packet_length': 1e-3, 'inter_arrival_time': 1e-3, 'up_down_ratio': 1e-3, 'direction': 1e-3}
+        D_max_flow_length = 1000
         if config is not None:
-            allowed_feature_names = config.get('pss', {}).get('allowed_feature_names', None)
-            lambda_dict = config.get('pss', {}).get('lambda_dict', None)
-            max_flow_length = config.get('pss', {}).get('max_flow_length', None)
-        self.allowed_feature_names = set(allowed_feature_names) if allowed_feature_names is not None else set()
-        self.lambda_dict = lambda_dict if lambda_dict is not None else {}
-        self.max_flow_length = max_flow_length if max_flow_length is not None else 1000
+            self.allowed_feature_names = config.get('pss', {}).get('allowed_feature_names', D_allowed_feature_names)
+            self.lambda_dict = config.get('pss', {}).get('lambda_dict', D_lambda_dict)
+            self.max_flow_length = config.get('pss', {}).get('max_flow_length', D_max_flow_length)
+        else:
+            self.allowed_feature_names = D_allowed_feature_names
+            self.lambda_dict = D_lambda_dict
+            self.max_flow_length = D_max_flow_length
 
     def build_matrices(self, feature_data: Dict[str, np.ndarray], feature_type: str, output_base_dir: str = 'feature_matrix', store_file_name: str = 'default_feature_matrix_filename', store: bool = True) -> Dict[str, dict]:
         """
