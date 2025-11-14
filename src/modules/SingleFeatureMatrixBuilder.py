@@ -2,12 +2,12 @@ import argparse
 import sys
 import os
 import numpy as np
-from typing import Dict
+from typing import Dict, List
 from collections import defaultdict
 from numba import njit, prange
 
 @njit(parallel=True, fastmath=True)
-def compute_matrices(seq: np.ndarray, max_len: int):
+def compute_matrices(seq: np.ndarray, max_len: int, lambda_value: float = 1e-3) -> (np.ndarray, np.ndarray, np.ndarray):
     n = min(len(seq), max_len)
     U = np.empty((n, n), dtype=np.float64)
     M = np.empty((n, n), dtype=np.float64)
@@ -46,7 +46,24 @@ class SingleFeatureMatrixBuilder:
     Computes U (mean), M (M2), J (dissimilarity) using Welford's method with Numba acceleration.
     Supports saving to .npz with integrity flag.
     """
-    def build_matrices(self, feature_data: Dict[str, np.ndarray], feature_type: str, config: dict, output_base_dir: str = 'feature_matrix', store_file_name: str = 'default_feature_matrix_filename', store: bool = True) -> Dict[str, dict]:
+    def __init__(self, config: dict = None):
+        """
+        :param allowed_feature_names: Optional list of allowed feature names.
+        :param lambda_dict: Optional dict {feature_type: lambda_value} for weighting.
+        """
+        # Read allowed_feature_names、 lambda_dict and max_flow_length from config if provided
+        allowed_feature_names = None
+        lambda_dict = None
+        max_flow_length = None
+        if config is not None:
+            allowed_feature_names = config.get('pss', {}).get('allowed_feature_names', None)
+            lambda_dict = config.get('pss', {}).get('lambda_dict', None)
+            max_flow_length = config.get('pss', {}).get('max_flow_length', None)
+        self.allowed_feature_names = set(allowed_feature_names) if allowed_feature_names is not None else set()
+        self.lambda_dict = lambda_dict if lambda_dict is not None else {}
+        self.max_flow_length = max_flow_length if max_flow_length is not None else 1000
+
+    def build_matrices(self, feature_data: Dict[str, np.ndarray], feature_type: str, output_base_dir: str = 'feature_matrix', store_file_name: str = 'default_feature_matrix_filename', store: bool = True) -> Dict[str, dict]:
         """
         Build matrices for all flows in the feature data.
         :param feature_data: Dict {flow_id: np.array(seq)} from FeatureExtractor.
@@ -57,13 +74,17 @@ class SingleFeatureMatrixBuilder:
         :param store: Whether to store the results to disk (default True).
         :return: Dict {flow_id: {'U': np.array, 'M': np.array, 'J': np.array}}.
         """
-        max_flow_length = config.get('pss', {}).get('max_flow_length', 1000)
-        
         results = {}
+
+        # Check if feature_type is allowed
+        if self.allowed_feature_names and feature_type not in self.allowed_feature_names:
+            print(f'Feature type "{feature_type}" is not in allowed_feature_names. Skipping matrix building.')
+            return {}
+        
         for flow_id, seq in feature_data.items():
             if len(seq) < 2:
                 continue  # Skip too short sequences
-            U, M, J = compute_matrices(seq, max_flow_length)
+            U, M, J = compute_matrices(seq, self.max_flow_length, self.lambda_dict.get(feature_type, 1e-3))
             results[flow_id] = {'U': U, 'M': M, 'J': J}
         
         print(f'{len(results)} flow matrices for {feature_type} were computed and saved to {os.path.join(output_base_dir, feature_type)}')
@@ -104,7 +125,10 @@ class SingleFeatureMatrixBuilder:
 
 if __name__ == '__main__':
     # Config for testing
-    config = {'pss': {'max_flow_length': 50}}  # Small value to test truncation
+    config = {'pss': {'max_flow_length': 50, 
+                      'allowed_feature_names': ['packet_length', 'inter_arrival_time', 'up_down_ratio', 'direction'],
+                      'lambda_dict': {'packet_length': 0.5, 'inter_arrival_time': 0.3, 'up_down_ratio': 0.1, 'direction': 0.1}
+                      }}  # Small value to test truncation
 
     parser = argparse.ArgumentParser(description='Build matrices from feature data.')
     parser.add_argument('-f', '--feature_type', type=str, required=True, help='Feature type (e.g., packet_length).')
@@ -114,12 +138,10 @@ if __name__ == '__main__':
     parser.add_argument('--run', action='store_true', help='Run building now if input provided.')
 
     args = parser.parse_args()
-    config['pss']['max_flow_length'] = args.max_flow_length
-
     if args.input_npz and args.run:
         feature_data = np.load(args.input_npz, allow_pickle=True)
         feature_data = {k: v for k, v in feature_data.items()}  # Convert to dict
-        builder = SingleFeatureMatrixBuilder()
-        results = builder.build_matrices(feature_data, args.feature_type, config, args.output, args.input_npz[:-4], store=True)
+        builder = SingleFeatureMatrixBuilder(config)
+        results = builder.build_matrices(feature_data, args.feature_type, args.output, args.input_npz[:-4], store=True)
         print(f'Feature "{args.feature_type}": {len(results)} flow matrices built, saved under {os.path.join(args.output, args.feature_type)}')
         sys.exit(0)
