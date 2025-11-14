@@ -2,7 +2,7 @@ import argparse
 import sys
 import os
 import numpy as np
-from typing import Dict, List
+from typing import Dict
 from collections import defaultdict
 from numba import njit, prange
 
