@@ -31,6 +31,7 @@ class FeatureExtractor:
         :param feature_type: Single string or list of strings for feature types.
         :param config: Dict with 'pss' section containing 'max_flow_length' (default 1000), 'min_flow_length' (default 3) and 'timeout_sec' (default 64).
         :param output_base_dir: Base directory for output (default 'feature_matrix').
+        :param store: Whether to store the results to disk (default True).
         :return: Dict {feature_type: {flow_id: np.array(feature_seq)}}, simplified if single type.
         """
         feature_types = [feature_type] if isinstance(feature_type, str) else feature_type
