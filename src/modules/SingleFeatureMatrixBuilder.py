@@ -1,131 +1,123 @@
-# 
-import numpy as np
-from numba import njit
-import pickle
+import argparse
+import sys
 import os
-from scapy.all import sniff, IP, TCP, UDP  # For streaming PCAP parsing
-from utils import load_config
+import numpy as np
+from typing import Dict
+from collections import defaultdict
+from numba import njit, prange
 
-# Numba-accelerated function to update U (mean) and M (cumulative second moment) matrices
 @njit
-def update_matrices(feature_seq, long_threshold):
+def welford_update(existing_count: int, existing_mean: float, existing_m2: float, new_value: float) -> tuple:
     """
-    Update U and M matrices using Welford's method for variance computation.
-    Truncate sequence to long_threshold to avoid O(n^2) explosion.
+    Welford's online update for mean and M2 (sum of squared differences).
+    Returns updated count, mean, M2.
     """
-    n = min(len(feature_seq), long_threshold)
+    count = existing_count + 1
+    delta = new_value - existing_mean
+    mean = existing_mean + delta / count
+    delta2 = new_value - mean
+    m2 = existing_m2 + delta * delta2
+    return count, mean, m2
+
+@njit(parallel=True)
+def compute_matrices(seq: np.ndarray, max_len: int) -> tuple:
+    """
+    Compute upper triangular matrices U (mean), M (M2), J (normalized variance) for sequence using Welford.
+    Limits to max_len if longer.
+    """
+    n = min(len(seq), max_len)
     U = np.zeros((n, n), dtype=np.float64)
     M = np.zeros((n, n), dtype=np.float64)
-    for t in range(n):
-        U[t, t] = feature_seq[t]
-        M[t, t] = 0.0
-        for s in range(t - 1, -1, -1):
-            delta = feature_seq[t] - U[s, t - 1]
-            seg_len = t - s + 1
-            U[s, t] = U[s, t - 1] + delta / seg_len
-            M[s, t] = M[s, t - 1] + delta * (feature_seq[t] - U[s, t])
-    return U, M
+    J = np.zeros((n, n), dtype=np.float64)
+    
+    for s in prange(n):
+        count, mean, m2 = 0, 0.0, 0.0
+        for t in range(s, n):
+            count, mean, m2 = welford_update(count, mean, m2, seq[t])
+            U[s, t] = mean
+            M[s, t] = m2
+            if t > s:
+                J[s, t] = m2 / (t - s)  # Normalized variance as dissimilarity score
+    
+    return U, M, J
 
-# Feature extraction example (packet length); can be swapped via parameter
-def extract_packet_length(pkt):
-    """Extract full packet length including header and payload."""
-    return len(pkt)
-
-# Main class for SingleFeatureMatrixBuilder module
 class SingleFeatureMatrixBuilder:
-    def __init__(self, config_path='config.ini', feature_extractor=extract_packet_length):
-        self.config = load_config(config_path)  # Load thresholds from config
-        self.feature_extractor = feature_extractor
-
-    def process_pcap(self, pcap_path, output_dir, feature_name):
+    """
+    Class for building single-feature matrices from feature sequences.
+    Computes U (mean), M (M2), J (dissimilarity) using Welford's method with Numba acceleration.
+    Supports saving to .npz with integrity flag.
+    """
+    def build_matrices(self, feature_data: Dict[str, np.ndarray], feature_type: str, config: dict, output_base_dir: str = 'feature_matrix') -> Dict[str, dict]:
         """
-        Process PCAP streamingly: group packets into flows with sub-flows based on FIN/RST and timeout.
-        Extract feature sequence, update matrices if length >= short_threshold, persist in batches.
+        Build matrices for all flows in the feature data.
+        :param feature_data: Dict {flow_id: np.array(seq)} from FeatureExtractor.
+        :param feature_type: String for feature type (e.g., 'packet_length').
+        :param config: Dict with 'pss' section containing 'max_flow_length' (default 1000).
+        :param output_base_dir: Base directory for output (default 'feature_matrix').
+        :return: Dict {flow_id: {'U': np.array, 'M': np.array, 'J': np.array}}.
         """
-        from collections import defaultdict
-        flows = defaultdict(list)  # key: 5-tuple, value: list of flow_dicts {'feature_seq': [], 'last_time': None}
-        terminated_flows = {}  # Batch for matrices {flow_id_sub_id: {'U': U, 'M': M}}
+        max_flow_length = config.get('pss', {}).get('max_flow_length', 1000)
+        
+        results = {}
+        for flow_id, seq in feature_data.items():
+            if len(seq) < 2:
+                continue  # Skip too short sequences
+            U, M, J = compute_matrices(seq, max_flow_length)
+            results[flow_id] = {'U': U, 'M': M, 'J': J}
+        
+        print(f'{len(results)} flow matrices for {feature_type} were computed and saved to {os.path.join(output_base_dir, feature_type)}')
+        self._save_matrices(results, feature_type, output_base_dir)
+        
+        return results
 
-        # Streaming packet processing
-        def process_packet(pkt):
-            key = self.get_flow_key(pkt)
-            if key is None:
-                return
-            current_time = float(pkt.time)
-            feature_value = self.feature_extractor(pkt)
+    def _save_matrices(self, results: Dict[str, dict], feature_type: str, output_base_dir: str) -> str:
+        """
+        Save matrices to .npz with writing flag for integrity.
+        """
+        output_dir = os.path.join(output_base_dir, feature_type)
+        os.makedirs(output_dir, exist_ok=True)
+        output_path = os.path.join(output_dir, f'{feature_type}_matrices.npz')
+        writing_flag = output_path + '.writing'
+        success = False
+        open(writing_flag, 'w').close()  # Create writing flag
+        try:
+            save_dict = defaultdict(dict)
+            for flow_id, mats in results.items():
+                for mat_name, mat in mats.items():
+                    save_dict[flow_id][mat_name] = mat
+            np.savez(output_path, **save_dict)
+            success = True
+        finally:
+            if success:
+                os.remove(writing_flag)  # Remove flag after save
+        return output_path
 
-            # If no sub-flows yet, create first one
-            if not flows[key]:
-                flows[key].append({'feature_seq': [], 'last_time': None})
+# Usage example:
+# from FeatureExtractor import FeatureExtractor
+# config = {'pss': {'max_flow_length': 1000}}
+# extractor = FeatureExtractor()
+# feature_data = extractor.extract_features('path/to/pcap.pcap', 'packet_length', config)['packet_length']
+# builder = SingleFeatureMatrixBuilder()
+# matrices = builder.build_matrices(feature_data, 'packet_length', config)
 
-            last_flow = flows[key][-1]
-            if last_flow['last_time'] is not None:
-                delta_time = current_time - last_flow['last_time']
-                if delta_time > self.config['timeout']:
-                    # Timeout: create new sub-flow and add current packet to it
-                    flows[key].append({'feature_seq': [feature_value], 'last_time': current_time})
-                    return
+if __name__ == '__main__':
+    # Config for testing
+    config = {'pss': {'max_flow_length': 50}}  # Small value to test truncation
 
-            # Add to last sub-flow and update last_time
-            last_flow['feature_seq'].append(feature_value)
-            last_flow['last_time'] = current_time
+    parser = argparse.ArgumentParser(description='Build matrices from feature data.')
+    parser.add_argument('-f', '--feature_type', type=str, required=True, help='Feature type (e.g., packet_length).')
+    parser.add_argument('-i', '--input_npz', type=str, required=True, help='Path to input .npz from FeatureExtractor.')
+    parser.add_argument('-o', '--output', type=str, default='workspace/test/feature_matrix', help='Output base directory.')
+    parser.add_argument('--max_flow_length', type=int, default=config['pss']['max_flow_length'], help='Max sequence length for matrices.')
+    parser.add_argument('--run', action='store_true', help='Run building now if input provided.')
 
-            # Check TCP termination (FIN or RST): add to current, then create new empty sub-flow
-            if TCP in pkt and (pkt[TCP].flags.F or pkt[TCP].flags.R):
-                flows[key].append({'feature_seq': [], 'last_time': None})  # New empty sub-flow for potential continuation
+    args = parser.parse_args()
+    config['pss']['max_flow_length'] = args.max_flow_length
 
-        sniff(offline=pcap_path, prn=process_packet, store=False)
-
-        # Post-process: terminate all sub-flows, discard incomplete timeouts or shorts
-        for key in list(flows.keys()):
-            for sub_id, sub_flow in enumerate(flows[key]):
-                seq = sub_flow['feature_seq']
-                if len(seq) < self.config['short_threshold']:
-                    continue  # Discard short sub-flows
-                # Check if this sub-flow is timed out (only for unfinished ones)
-                if sub_flow['last_time'] is not None and (float(os.path.getmtime(pcap_path)) - sub_flow['last_time'] > self.config['timeout']):
-                    continue  # Discard timed-out unfinished sub-flows (simulated end time via file mtime)
-                U, M = update_matrices(np.array(seq), self.config['long_threshold'])
-                terminated_flows[f"{key}_sub{sub_id + 1}"] = {'U': U, 'M': M}
-                # Batch persist
-                if len(terminated_flows) >= self.config['batch_size']:
-                    self.persist_batch(terminated_flows, output_dir, feature_name)
-                    terminated_flows.clear()
-
-        # Persist any remaining batch
-        if terminated_flows:
-            self.persist_batch(terminated_flows, output_dir, feature_name)
-
-    def persist_batch(self, batch, output_dir, feature_name):
-        """Persist U and M matrices to subdirs as pickle files."""
-        u_dir = os.path.join(output_dir, feature_name, 'U')
-        m_dir = os.path.join(output_dir, feature_name, 'M')
-        os.makedirs(u_dir, exist_ok=True)
-        os.makedirs(m_dir, exist_ok=True)
-        for flow_id, matrices in batch.items():
-            with open(os.path.join(u_dir, f"{flow_id}.pkl"), 'wb') as f:
-                pickle.dump(matrices['U'], f)
-            with open(os.path.join(m_dir, f"{flow_id}.pkl"), 'wb') as f:
-                pickle.dump(matrices['M'], f)
-
-    @staticmethod
-    def get_flow_key(pkt):
-        """Generate normalized 5-tuple flow key for bidirectional flows."""
-        if IP not in pkt:
-            return None
-        src_ip, dst_ip = pkt[IP].src, pkt[IP].dst
-        proto = pkt[IP].proto
-        if TCP in pkt:
-            sport, dport = pkt[TCP].sport, pkt[TCP].dport
-        elif UDP in pkt:
-            sport, dport = pkt[UDP].sport, pkt[UDP].dport
-        else:
-            return None
-        if src_ip > dst_ip:
-            return f"{dst_ip}-{src_ip}-{dport}-{sport}-{proto}"
-        return f"{src_ip}-{dst_ip}-{sport}-{dport}-{proto}"
-
-# Usage example
-if __name__ == "__main__":
-    builder = SingleFeatureMatrixBuilder()
-    builder.process_pcap('input.pcap', 'feature_matrix', 'packet_length')
+    if args.input_npz and args.run:
+        feature_data = np.load(args.input_npz, allow_pickle=True)
+        feature_data = {k: v for k, v in feature_data.items()}  # Convert to dict
+        builder = SingleFeatureMatrixBuilder()
+        results = builder.build_matrices(feature_data, args.feature_type, config, args.output)
+        print(f'Feature "{args.feature_type}": {len(results)} flow matrices built, saved under {os.path.join(args.output, args.feature_type)}')
+        sys.exit(0)
