@@ -24,37 +24,51 @@ class FeatureExtractor:
     Supports features: packet_length, inter_arrival_time, direction, up_down_rate.
     Supports extracting multiple feature types in one pass.
     """
-    def extract_features(self, pcap_path: str, feature_type: Union[str, List[str]], config: dict, output_base_dir: str = 'feature_matrix', store: bool = True) -> Dict[str, dict]:
+    def __init__(self, config: dict = None):
+        """
+        :param config: Dict with 'pss' section containing optional: 
+            'max_flow_length' (int, default 1000), 
+            'min_flow_length' (int, default 3),
+            'timeout_sec' (float, default 64),
+            'allowed_feature_names' (list of str).
+        """
+        D_allowed_feature_names = {'packet_length', 'inter_arrival_time', 'up_down_ratio', 'direction'}
+        if config is not None:
+            self.max_flow_length = config.get('pss', {}).get('max_flow_length', 1000)
+            self.min_flow_length = config.get('pss', {}).get('min_flow_length', 3)
+            self.timeout_sec = config.get('pss', {}).get('timeout_sec', 64)
+            self.allowed_feature_names = config.get('pss', {}).get('allowed_feature_names', D_allowed_feature_names)
+        else:
+            self.max_flow_length = 1000
+            self.min_flow_length = 3
+            self.timeout_sec = 64
+            self.allowed_feature_names = D_allowed_feature_names
+            
+    def extract_features(self, pcap_path: str, feature_type: Union[str, List[str]], output_base_dir: str = 'feature_matrix', store: bool = True) -> Dict[str, dict]:
         """
         Extract features for all flows in the PCAP, supporting single or multiple feature types.
         :param pcap_path: Path to PCAP file.
         :param feature_type: Single string or list of strings for feature types.
-        :param config: Dict with 'pss' section containing 'max_flow_length' (default 1000), 'min_flow_length' (default 3) and 'timeout_sec' (default 64).
         :param output_base_dir: Base directory for output (default 'feature_matrix').
         :param store: Whether to store the results to disk (default True).
         :return: Dict {feature_type: {flow_id: np.array(feature_seq)}}, simplified if single type.
         """
         feature_types = [feature_type] if isinstance(feature_type, str) else feature_type
-        supported_features = {'packet_length', 'inter_arrival_time', 'direction', 'up_down_rate'}
+        supported_features = self.allowed_feature_names
         if not set(feature_types).issubset(supported_features):
             raise ValueError(f"Unsupported features: {set(feature_types) - supported_features}")
-        
-        max_flow_length = config.get('pss', {}).get('max_flow_length', 1000)
-        min_flow_length = config.get('pss', {}).get('min_flow_length', 3)
-        timeout_sec = config.get('pss', {}).get('timeout_sec', 64)
         
         # Determine data needs based on features
         needs_lengths = any(ft in {'packet_length', 'up_down_rate'} for ft in feature_types)
         needs_directions = any(ft in {'direction', 'up_down_rate'} for ft in feature_types)
-        needs_timestamps = any(ft in {'inter_arrival_time', 'up_down_rate'} for ft in feature_types)
         
         # Process PCAP and build flows
-        flow_dict = self._process_pcap_and_build_flows(pcap_path, max_flow_length, timeout_sec, needs_lengths, needs_directions)
+        flow_dict = self._process_pcap_and_build_flows(pcap_path, self.max_flow_length, self.timeout_sec, needs_lengths, needs_directions)
         
         # Post-process and generate results for each feature
         all_results = {}
         for ft in feature_types:
-            result = self._post_process_flows_for_feature(flow_dict, ft, needs_lengths, needs_directions, min_flow_length)
+            result = self._post_process_flows_for_feature(flow_dict, ft, needs_lengths, needs_directions, self.min_flow_length)
             all_results[ft] = result
             print(f'{len(result)} flow records\' {ft} were writed to file {os.path.join(output_base_dir, ft)}')
             # If needed, save the result
@@ -236,16 +250,11 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    # apply CLI config overrides
-    config['pss']['max_flow_length'] = args.max_flow_length
-    config['pss']['min_flow_length'] = args.min_flow_length
-    config['pss']['timeout_sec'] = args.timeout_sec
-
     feature_list = [ft.strip() for ft in args.features.split(',') if ft.strip()]
 
     if args.pcap and args.run:
-        extractor = FeatureExtractor()
-        results = extractor.extract_features(args.pcap, feature_list, config, args.output)
+        extractor = FeatureExtractor(config)
+        results = extractor.extract_features(args.pcap, feature_list, args.output)
         # print brief summary
         if isinstance(results, dict):
             for ft, res in (results.items() if isinstance(results, dict) and any(isinstance(v, dict) for v in results.values()) else [(feature_list[0], results)]):
