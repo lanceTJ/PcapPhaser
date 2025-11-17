@@ -10,7 +10,7 @@ from numba import njit, prange
 def compute_matrices(seq: np.ndarray, max_len: int, lambda_value: float = 1e-3) -> (np.ndarray, np.ndarray, np.ndarray):
     """
     Compute U (mean), M (M2), J (dissimilarity score) matrices using Welford's method.
-    J[s,t] = 1 / ( (M[s,t] / (t-s)) + lambda_value ) for t > s; for t == s, J = 1 / lambda_value.
+    J[s,t] = 1 / ( (M[s,t] / (t-s)) + lambda_value ) for t > s; for t == s, J = 0.0 (undefined in formula).
     Only upper triangular (t >= s) is computed; lower is zero.
     """
     n = min(len(seq), max_len)
@@ -37,7 +37,7 @@ def compute_matrices(seq: np.ndarray, max_len: int, lambda_value: float = 1e-3) 
                 variance = m2 / (t - s) if (t - s) > 0 else 0.0
                 J[s, t] = 1.0 / (variance + lambda_value)
             else:
-                J[s, t] =  0.0  # Set to 0.0 for t == s
+                J[s, t] = 0.0  # Set diagonal to 0 as per output
 
     return U, M, J
 
