@@ -6,7 +6,7 @@ from typing import Dict, List
 from collections import defaultdict
 from numba import njit, prange
 
-@njit(parallel=True, fastmath=True)
+@njit(fastmath=True)  # Removed parallel=True to avoid List ndim error in Numba parfor analysis
 def fuse_matrices(js_list: List[np.ndarray], weights: np.ndarray) -> np.ndarray:
     """
     Fuse multiple J matrices with normalization and weighted sum using Numba.
@@ -17,7 +17,7 @@ def fuse_matrices(js_list: List[np.ndarray], weights: np.ndarray) -> np.ndarray:
     shape = js_list[0].shape
     fused_j = np.zeros(shape, dtype=np.float64)
     
-    for i in prange(num_mats):
+    for i in range(num_mats):  # Use serial loop instead of prange for compatibility with List[np.ndarray]
         j_mat = js_list[i]
         j_min = np.min(j_mat)
         j_max = np.max(j_mat)
@@ -52,12 +52,12 @@ class FeatureFusion:
             self.feature_weights = D_feature_weights
             self.regularization_lambda = D_regularization_lambda
 
-    def fuse_features(self, matrices_data: Dict[str, Dict[str, dict]], feature_types: List[str], output_base_dir: str = 'feature_matrix', store_file_name: str = 'default_merged_matrix_filename', store: bool = True) -> Dict[str, np.ndarray]:
+    def fuse_features(self, matrices_data: Dict[str, Dict[str, dict]], feature_types: List[str], output_base_dir: str = 'datasets/feature_set_n/merged_matrix', store_file_name: str = 'default_merged_matrix_filename', store: bool = True) -> Dict[str, np.ndarray]:
         """
         Fuse J matrices for all flows across multiple feature types.
         :param matrices_data: Dict {feature_type: {flow_id: {'U': np.array, 'M': np.array, 'J': np.array}}}.
         :param feature_types: List of str for feature types to fuse (e.g., ['packet_length', 'inter_arrival_time']).
-        :param output_base_dir: Base directory for output (default 'feature_matrix').
+        :param output_base_dir: Base directory for output.
         :param store_file_name: File name for storing the fused matrix (default 'default_merged_matrix_filename').
         :param store: Whether to store the results to disk (default True).
         :return: Dict {flow_id: fused_J np.array}.
@@ -85,7 +85,7 @@ class FeatureFusion:
             np.fill_diagonal(fused_j, fused_j.diagonal() + self.regularization_lambda)
             results[flow_id] = fused_j
         
-        print(f'{len(results)} fused matrices were computed and saved to {os.path.join(output_base_dir, "merged_matrix")}')
+        print(f'{len(results)} fused matrices were computed and saved to {output_base_dir}')
         if store:
             self._save_fused_matrix(results, output_base_dir, store_file_name)
         
@@ -95,9 +95,8 @@ class FeatureFusion:
         """
         Save fused J matrices to .npz with writing flag for integrity.
         """
-        output_dir = os.path.join(output_base_dir, 'merged_matrix')
-        os.makedirs(output_dir, exist_ok=True)
-        output_path = os.path.join(output_dir, f'{store_file_name}_fused.npz')
+        os.makedirs(output_base_dir, exist_ok=True)
+        output_path = os.path.join(output_base_dir, f'{store_file_name}_fused.npz')
         writing_flag = output_path + '.writing'
         success = False
         open(writing_flag, 'w').close()  # Create writing flag
@@ -145,6 +144,6 @@ if __name__ == '__main__':
             matrices_data[ft] = {k: v.item() for k, v in data.items()}  # Convert to dict with inner dicts
         
         fusion = FeatureFusion(config)
-        results = fusion.fuse_features(matrices_data, feature_types, args.output, args.input_npz_paths[0][:-4], store=True)
-        print(f'Fused {len(results)} matrices, saved under {os.path.join(args.output, "merged_matrix")}')
+        results = fusion.fuse_features(matrices_data, feature_types, args.output, os.path.basename(input_paths[0])[:-4], store=True)
+        print(f'Fused {len(results)} matrices, saved under {args.output}')
         sys.exit(0)
