@@ -66,7 +66,7 @@ class FeatureFusion:
 
         # Check if feature_types are allowed
         if not set(feature_types).issubset(self.allowed_feature_names):
-            print(f'Unsupported features: {set(feature_types) - set(self.allowed_feature_names)}. Skipping fusion.')
+            print(f'Unsupported features: {set(feature_types) - set(self.allowed_feature_names)}, supported features: {self.allowed_feature_names}. Skipping fusion.')
             return {}
         
         # Get weights array
