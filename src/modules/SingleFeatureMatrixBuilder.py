@@ -52,8 +52,8 @@ class SingleFeatureMatrixBuilder:
         :param config: Dict with 'pss' section containing optional 'allowed_feature_names' (list of str), 'lambda_dict' (dict of str to float), and 'max_flow_length' (int, default 1000).
         """
         # Read allowed_feature_names, lambda_dict and max_flow_length from config if provided
-        D_allowed_feature_names = {'packet_length', 'inter_arrival_time', 'up_down_ratio', 'direction'}
-        D_lambda_dict = {'packet_length': 1e-3, 'inter_arrival_time': 1e-3, 'up_down_ratio': 1e-3, 'direction': 1e-3}
+        D_allowed_feature_names = {'packet_length', 'inter_arrival_time', 'up_down_rate', 'direction'}
+        D_lambda_dict = {'packet_length': 1e-3, 'inter_arrival_time': 1e-3, 'up_down_rate': 1e-3, 'direction': 1e-3}
         D_max_flow_length = 1000
         if config is not None:
             self.allowed_feature_names = config.get('pss', {}).get('allowed_feature_names', D_allowed_feature_names)
@@ -126,8 +126,8 @@ class SingleFeatureMatrixBuilder:
 if __name__ == '__main__':
     # Config for testing
     config = {'pss': {'max_flow_length': 50, 
-                      'allowed_feature_names': ['packet_length', 'inter_arrival_time', 'up_down_ratio', 'direction'],
-                      'lambda_dict': {'packet_length': 0.5, 'inter_arrival_time': 0.3, 'up_down_ratio': 0.1, 'direction': 0.1}
+                      'allowed_feature_names': ['packet_length', 'inter_arrival_time', 'up_down_rate', 'direction'],
+                      'lambda_dict': {'packet_length': 0.5, 'inter_arrival_time': 0.3, 'up_down_rate': 0.1, 'direction': 0.1}
                       }}  # Small value to test truncation
 
     parser = argparse.ArgumentParser(description='Build matrices from feature data.')
