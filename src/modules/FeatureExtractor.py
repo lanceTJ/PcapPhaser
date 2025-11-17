@@ -32,7 +32,7 @@ class FeatureExtractor:
             'timeout_sec' (float, default 64),
             'allowed_feature_names' (list of str).
         """
-        D_allowed_feature_names = {'packet_length', 'inter_arrival_time', 'up_down_ratio', 'direction'}
+        D_allowed_feature_names = {'packet_length', 'inter_arrival_time', 'up_down_rate', 'direction'}
         if config is not None:
             self.max_flow_length = config.get('pss', {}).get('max_flow_length', 1000)
             self.min_flow_length = config.get('pss', {}).get('min_flow_length', 3)
@@ -56,7 +56,7 @@ class FeatureExtractor:
         feature_types = [feature_type] if isinstance(feature_type, str) else feature_type
         supported_features = self.allowed_feature_names
         if not set(feature_types).issubset(supported_features):
-            raise ValueError(f"Unsupported features: {set(feature_types) - supported_features}")
+            raise ValueError(f"Unsupported features: {set(feature_types) - supported_features}, supported: {supported_features}")
         
         # Determine data needs based on features
         needs_lengths = any(ft in {'packet_length', 'up_down_rate'} for ft in feature_types)
@@ -187,7 +187,7 @@ class FeatureExtractor:
                 elif ft == 'inter_arrival_time':
                     ts_array = np.array(flow['timestamps'])
                     features = compute_iat(ts_array)
-                elif ft == 'up_down_rate':
+                elif ft == 'up_down_rate' or ft == 'up_down_ratio':
                     ts_array = np.array(flow['timestamps'])
                     iat = compute_iat(ts_array)
                     lengths = np.array(flow.get('lengths', []))
@@ -195,6 +195,9 @@ class FeatureExtractor:
                     epsilon = 1e-6  # To avoid division by zero
                     features = (lengths / (iat + epsilon)) * directions 
                     features[0] = 0 # First packet IAT is zero, so rate is set to 0
+                else:
+                    raise ValueError(f"Unsupported feature type: {ft}, valid features are {self.allowed_feature_names}")
+                    continue  # Unsupported feature, should not happen due to prior checks
                 
                 if len(features) > 0:
                     result[flow_id] = features
