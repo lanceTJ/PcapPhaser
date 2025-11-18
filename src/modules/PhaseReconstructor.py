@@ -50,11 +50,12 @@ class PhaseReconstructor:
         # Build flow_packets {flow_id: [pkt]} with unified float ts format
         flow_packets = {}
         for tuple_key, flows in flow_dict.items():
-            for flow in flows:
+            for i, flow in enumerate(flows, start=0):
                 if not flow['timestamps']:
                     continue  # Skip empty
                 first_ts = flow['first_ts'] or flow['timestamps'][0]
-                flow_id = f"{tuple_key}-{first_ts:.6f}"
+                std_time = f'{first_ts:.6f}'[:-3].replace('.', '')  # e.g., 1622547800123456
+                flow_id = f"{tuple_key}-{i}-{std_time}"
                 pkts = flow['packets']
                 flow_packets[flow_id] = pkts
 
@@ -79,7 +80,7 @@ class PhaseReconstructor:
         if store:
             os.makedirs(output_base_dir, exist_ok=True)
             for ph in range(1, self.num_phases + 1):
-                output_path = os.path.join(output_base_dir, f'phase_{ph}_{store_file_base}.pcap')
+                output_path = os.path.join(output_base_dir, f'phase_{ph}', f'p_{ph}_{store_file_base}.pcap')
                 output_paths[ph] = self._save_phased_pcap(phase_lists[ph], output_path)
 
         print(f'Reconstructed {len(output_paths)} phased pcaps from {original_pcap_path} under {output_base_dir}')
@@ -221,7 +222,7 @@ if __name__ == '__main__':
 
     import time
     start_time = time.time()
-    print(f'')
+    print(f'------Starting reconstruction at {time.ctime(start_time)}')
     args = parser.parse_args()
     if args.pcap and args.marks_json and args.run:
         with open(args.marks_json, 'r') as f:
@@ -233,4 +234,4 @@ if __name__ == '__main__':
         print(f'Reconstructed {len(results)} phased pcaps, saved under {args.output}')
         sys.exit(0)
     end_time = time.time()
-    print(f'Total time: {end_time - start_time:.2f} seconds')
+    print(f'-------Total time: {end_time - start_time:.2f} seconds')
