@@ -29,6 +29,7 @@ This project uses **CICFlowMeter** (developed by the University of New Brunswick
 
 ```bash
 # Linux / macOS
+chmod +x third_party/cicflowmeter/setup_cicflowmeter.sh
 bash third_party/cicflowmeter/setup_cicflowmeter.sh
 ```
 
