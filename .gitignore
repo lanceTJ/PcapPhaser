@@ -16,3 +16,6 @@
 
 # workspace
 /workspace/
+
+# Third-party libraries
+third_party/cicflowmeter/cicflowmeter.jar

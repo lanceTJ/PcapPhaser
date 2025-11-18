@@ -16,6 +16,22 @@ This project implements a high-performance dataset generation system for network
 3. Manually install CicFlowMeter (external tool) and set path in config.ini.
 4. Prepare data directory with PCAP files under data/day1/, etc.
 
+### Dependencies - CICFlowMeter (Standard 80+ Flow Features)
+
+This project uses **CICFlowMeter** (developed by the University of New Brunswick, Canada, with MIT License) to generate standard flow-level features to ensure 100% feature consistency with classic datasets such as CIC-IDS2017/2018.
+
+
+- warehouse: https://github.com/ahlashkari/CICFlowMeter
+
+- license: MIT (see ` third_party cicflowmeter/LICENSE_CICFlowMeter. TXT `)
+
+- Please run the automatic installation script before the first run (Internet connection required) :
+
+```bash
+# Linux / macOS
+bash third_party/cicflowmeter/setup_cicflowmeter.sh
+```
+
 ## Usage
 - Configure settings in `configs/config.ini`.
 - Run the pipeline: `python run.py --config configs/config.ini --stages all`
