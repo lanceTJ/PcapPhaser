@@ -22,7 +22,7 @@ class CFMRunner:
                        'max_workers' (int): Parallel threads (default = os.cpu_count() or 4)
                        'timeout_min' (int): Per-file timeout in minutes (default 30)
         """
-        default_jar = os.path.join(os.path.dirname(__file__), 'third_party', 'cicflowmeter', 'cicflowmeter.jar')
+        default_jar = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'third_party', 'cicflowmeter', 'cicflowmeter.jar')
         if config is not None and 'cfm' in config:
             self.jar_path = config['cfm'].get('jar_path', default_jar)
             self.java_cmd = config['cfm'].get('java_cmd', 'java')
