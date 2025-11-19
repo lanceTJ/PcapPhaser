@@ -66,10 +66,10 @@ mvn -U -q package -DskipTests
 
 echo "Copying final JAR to project directory"
 # Compatible with official actual output filename pattern
-if ls target/CICFlowMeter-*.jar 1>/dev/null 2>&1; then
-    cp target/CICFlowMeter-*.jar "$JAR_FINAL"
-elif ls target/cicflowmeter-*.jar 1>/dev/null 2>&1; then
-    cp target/cicflowmeter-*.jar "$JAR_FINAL"
+if ls target/CICFlowMeter*.jar 1>/dev/null 2>&1; then
+    cp target/CICFlowMeter*.jar "$JAR_FINAL"
+elif ls target/cicflowmeter*.jar 1>/dev/null 2>&1; then
+    cp target/cicflowmeters*.jar "$JAR_FINAL"
 else
     echo "ERROR: No JAR generated in target/. Maven build may have failed"
     ls -la target/
