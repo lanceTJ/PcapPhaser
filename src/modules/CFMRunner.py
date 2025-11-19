@@ -16,13 +16,21 @@ class CFMRunner:
     """
     def __init__(self, config: dict = None):
         """
-        :param config: Dict with optional 'cfm' section:
-                       'jar_path' (str): Path to cicflowmeter.jar
-                       'java_cmd' (str): Java executable (default 'java')
-                       'max_workers' (int): Parallel threads (default = os.cpu_count() or 4)
-                       'timeout_min' (int): Per-file timeout in minutes (default 30)
+        Initialize CFMRunner with robust JAR path resolution.
+        Works correctly even when CFMRunner.py is located in src/modules/ subdirectory.
+        
+        :param config: Dict with optional 'cfm' section containing:
+                       'jar_path'      - absolute/relative path to cicflowmeter.jar
+                       'java_cmd'      - java executable (default: 'java')
+                       'max_workers'   - parallel threads
+                       'timeout_min'   - timeout per phase in minutes
         """
-        default_jar = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'third_party', 'cicflowmeter', 'cicflowmeter.jar')
+        # Robustly resolve project root regardless of module depth
+        current_file_dir = os.path.dirname(os.path.abspath(__file__))        # .../PcapPhaser/src/modules
+        project_root = os.path.abspath(os.path.join(current_file_dir, '..', '..'))  # .../PcapPhaser
+        
+        default_jar = os.path.join(project_root, 'third_party', 'cicflowmeter', 'cicflowmeter.jar')
+
         if config is not None and 'cfm' in config:
             self.jar_path = config['cfm'].get('jar_path', default_jar)
             self.java_cmd = config['cfm'].get('java_cmd', 'java')
@@ -34,8 +42,17 @@ class CFMRunner:
             self.max_workers = max(4, os.cpu_count() or 4)
             self.timeout_min = 30
 
+        # Critical check with clear error message
         if not os.path.exists(self.jar_path):
-            raise FileNotFoundError(f"CICFlowMeter JAR not found at {self.jar_path}")
+            raise FileNotFoundError(
+                "\n=== CICFlowMeter JAR NOT FOUND ===\n"
+                f"Expected path: {self.jar_path}\n"
+                "Please check:\n"
+                "1. Run the build script first:\n"
+                "   cd third_party/cicflowmeter && bash build_and_install.sh\n"
+                "2. Confirm cicflowmeter.jar exists in the above path\n"
+                "3. Current working directory and file location are correct\n"
+            )
 
     def run_cfm_on_phased_pcaps(self,
                                 phase_base_dir: str,
