@@ -16,43 +16,26 @@ class CFMRunner:
     """
     def __init__(self, config: dict = None):
         """
-        Initialize CFMRunner with robust JAR path resolution.
-        Works correctly even when CFMRunner.py is located in src/modules/ subdirectory.
-        
-        :param config: Dict with optional 'cfm' section containing:
-                       'jar_path'      - absolute/relative path to cicflowmeter.jar
-                       'java_cmd'      - java executable (default: 'java')
-                       'max_workers'   - parallel threads
-                       'timeout_min'   - timeout per phase in minutes
+        Directly invoke Java with correct CLASSPATH including all lib/*.jar
+        Uses Java wildcard support for lib/* to ensure all dependencies (including jnetpcap) are loaded
         """
-        # Robustly resolve project root regardless of module depth
-        current_file_dir = os.path.dirname(os.path.abspath(__file__))        # .../PcapPhaser/src/modules
-        project_root = os.path.abspath(os.path.join(current_file_dir, '..', '..'))  # .../PcapPhaser
-        
-        default_jar = os.path.join(project_root, 'third_party', 'cicflowmeter', 'cicflowmeter.jar')
+        current_file_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.abspath(os.path.join(current_file_dir, '..', '..'))
+        dist_base = os.path.join(project_root, 'third_party', 'cicflowmeter', 'cfm_dist')
 
-        if config is not None and 'cfm' in config:
-            self.jar_path = config['cfm'].get('jar_path', default_jar)
-            self.java_cmd = config['cfm'].get('java_cmd', 'java')
-            self.max_workers = config['cfm'].get('max_workers', max(4, os.cpu_count() or 4))
-            self.timeout_min = config['cfm'].get('timeout_min', 30)
-        else:
-            self.jar_path = default_jar
-            self.java_cmd = 'java'
-            self.max_workers = max(4, os.cpu_count() or 4)
-            self.timeout_min = 30
+        dist_candidates = [d for d in os.listdir(dist_base) if d.startswith('CICFlowMeter')]
+        if not dist_candidates:
+            raise FileNotFoundError(f"No CICFlowMeter distribution found in {dist_base}")
+        self.dist_dir = os.path.join(dist_base, sorted(dist_candidates)[-1])
 
-        # Critical check with clear error message
-        if not os.path.exists(self.jar_path):
-            raise FileNotFoundError(
-                "\n=== CICFlowMeter JAR NOT FOUND ===\n"
-                f"Expected path: {self.jar_path}\n"
-                "Please check:\n"
-                "1. Run the build script first:\n"
-                "   cd third_party/cicflowmeter && bash build_and_install.sh\n"
-                "2. Confirm cicflowmeter.jar exists in the above path\n"
-                "3. Current working directory and file location are correct\n"
-            )
+        self.native_lib_dir = os.path.join(self.dist_dir, 'lib', 'native')
+        self.lib_dir = os.path.join(self.dist_dir, 'lib')
+
+        # Critical: Use lib/* wildcard - Java 6+ supports this directly
+        self.classpath = os.path.join(self.lib_dir, '*')
+
+        self.max_workers = config['cfm'].get('max_workers', max(4, os.cpu_count() or 4)) if config else max(4, os.cpu_count() or 4)
+        self.timeout_min = config['cfm'].get('timeout_min', 30) if config else 30
 
     def run_cfm_on_phased_pcaps(self,
                                 phase_base_dir: str,
@@ -101,47 +84,47 @@ class CFMRunner:
 
     def _process_single_phase(self, phase_num: int, input_dir: str, output_dir: str) -> bool:
         """
-        Process all .pcap files in one phase directory using CICFlowMeter.
-        Uses .writing flag for integrity.
+        Execute CICFlowMeter using direct Java invocation with proper CLASSPATH wildcard
+        This guarantees all jars including jnetpcap are loaded, no NoClassDefFoundError
         """
-        pcap_files = [f for f in os.listdir(input_dir) if f.endswith('.pcap')]
-        if not pcap_files:
-            logging.info(f"No pcap in phase {phase_num}, skip")
-            return True
-
         writing_flag = os.path.join(output_dir, '.cfm_processing')
         if os.path.exists(writing_flag):
-            print(f"Phase {phase_num} is already being processed or failed before, skip")
+            print(f"[Phase {phase_num}] Already processing or failed, skipping")
             return False
 
         open(writing_flag, 'w').close()
-        success = False
         try:
-            # CICFlowMeter command: batch mode
             cmd = [
-                self.java_cmd, '-jar', self.jar_path,
-                '-i', input_dir,
-                '-o', output_dir,
-                '-f', 'csv'
+                'java',
+                f'-Djava.library.path={self.native_lib_dir}',  # Ensure native libs can be found
+                '-cp', self.classpath,                        # Key fix: lib/* loads ALL jars including jnetpcap
+                'cic.cs.unb.ca.ifm.Cmd',
+                input_dir,
+                output_dir
             ]
-            print(f"Running CFM on phase {phase_num}: {' '.join(cmd)}")
-            timeout_sec = self.timeout_min * 60
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_sec)
+
+            print(f"[Phase {phase_num}] Running: {' '.join(cmd)}")
+
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=self.timeout_min * 60
+            )
 
             if result.returncode == 0:
                 csv_count = len([f for f in os.listdir(output_dir) if f.endswith('.csv')])
-                print(f"Phase {phase_num} completed, generated {csv_count} CSV files")
-                success = True
+                print(f"[Phase {phase_num}] Success, generated {csv_count} CSV files")
+                return True
             else:
-                print(f"Phase {phase_num} CFM failed: {result.stderr[-500:]}")
-        except subprocess.TimeoutExpired:
-            print(f"Phase {phase_num} CFM timeout after {self.timeout_min} minutes")
+                print(f"[Phase {phase_num}] Failed:\n{result.stderr.strip()}")
+                return False
         except Exception as e:
-            print(f"Phase {phase_num} CFM exception: {e}")
+            print(f"[Phase {phase_num}] Exception: {e}")
+            return False
         finally:
             if os.path.exists(writing_flag):
                 os.remove(writing_flag)
-        return success
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Run CICFlowMeter on phased pcaps')
