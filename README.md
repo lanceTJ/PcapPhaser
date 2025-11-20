@@ -67,7 +67,7 @@ This project uses the **official latest CICFlowMeter** (Canadian Institute for C
 
 ```bash
 cd third_party/cicflowmeter
-bash build_and_install.sh      # Recommended: covers 99% scenarios
+bash build_and_install.sh      # unzip package needed 
 ```
 
 **features:**
