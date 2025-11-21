@@ -229,7 +229,7 @@ if __name__ == '__main__':
             phase_marks = json.load(f)
         config['pss']['num_phases'] = args.num_phases  # Update config
         recon = PhaseReconstructor(config)
-        basename = os.path.basename(args.pcap)[:-5]  # Remove .pcap
+        basename = os.path.basename(args.pcap)[:-5] if os.path.basename(args.pcap)[-5:] == '.pcap' else os.path.basename(args.pcap)  # Remove .pcap
         results = recon.reconstruct_phases(phase_marks, args.pcap, args.output, basename, store=True)
         print(f'Reconstructed {len(results)} phased pcaps, saved under {args.output}')
         sys.exit(0)
