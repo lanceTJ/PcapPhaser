@@ -29,19 +29,19 @@ class FeatureExtractor:
         :param config: Dict with 'pss' section containing optional: 
             'max_flow_length' (int, default 1000), 
             'min_flow_length' (int, default 3),
-            'timeout_sec' (float, default 64),
+            'timeout_sec' (float, default 600),
             'allowed_feature_names' (list of str).
         """
         D_allowed_feature_names = {'packet_length', 'inter_arrival_time', 'up_down_rate', 'direction'}
         if config is not None:
             self.max_flow_length = config.get('pss', {}).get('max_flow_length', 1000)
             self.min_flow_length = config.get('pss', {}).get('min_flow_length', 3)
-            self.timeout_sec = config.get('pss', {}).get('timeout_sec', 64)
+            self.timeout_sec = config.get('pss', {}).get('timeout_sec', 600)
             self.allowed_feature_names = config.get('pss', {}).get('allowed_feature_names', D_allowed_feature_names)
         else:
             self.max_flow_length = 1000
             self.min_flow_length = 3
-            self.timeout_sec = 64
+            self.timeout_sec = 600
             self.allowed_feature_names = D_allowed_feature_names
             
     def extract_features(self, pcap_path: str, feature_type: Union[str, List[str]], output_base_dir: str = 'feature_matrix', store: bool = True) -> Dict[str, dict]:
@@ -220,7 +220,7 @@ class FeatureExtractor:
         return output_path
 
 # Usage example:
-# config = {'pss': {'max_flow_length': 1000, 'min_flow_length': 3, 'timeout_sec': 64}}
+# config = {'pss': {'max_flow_length': 1000, 'min_flow_length': 3, 'timeout_sec': 600}}
 # extractor = FeatureExtractor()
 # features = extractor.extract_features('path/to/pcap.pcap', ['packet_length', 'inter_arrival_time'], config, output_base_dir='custom_matrix')
 # # features = {'packet_length': {...}, 'inter_arrival_time': {...}}
@@ -231,7 +231,7 @@ if __name__ == '__main__':
         'pss': {
             'max_flow_length': 50,  # Small value to test super flow truncation
             'min_flow_length': 3,
-            'timeout_sec': 64
+            'timeout_sec': 600
         }
     }
 
