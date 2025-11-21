@@ -16,12 +16,12 @@ class PhaseReconstructor:
         """
         :param config: Dict with 'pss' section containing optional 'num_phases' (int, default 4),
                        'max_flow_length' (int, default 1000), 'min_flow_length' (int, default 3),
-                       'timeout_sec' (float, default 64).
+                       'timeout_sec' (float, default 600).
         """
         D_num_phases = 4
         D_max_flow_length = 1000
         D_min_flow_length = 3
-        D_timeout_sec = 64
+        D_timeout_sec = 600
         if config is not None:
             pss = config.get('pss', {})
             self.num_phases = pss.get('num_phases', D_num_phases)
@@ -211,7 +211,7 @@ class PhaseReconstructor:
 
 if __name__ == '__main__':
     # Config for testing
-    config = {'pss': {'num_phases': 4, 'max_flow_length': 1000, 'min_flow_length': 3, 'timeout_sec': 64}}
+    config = {'pss': {'num_phases': 4, 'max_flow_length': 1000, 'min_flow_length': 3, 'timeout_sec': 600}}
 
     parser = argparse.ArgumentParser(description='Reconstruct phased pcaps from marks and original pcap.')
     parser.add_argument('-p', '--pcap', type=str, required=True, help='Path to original pcap file.')
