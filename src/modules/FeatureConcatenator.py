@@ -180,6 +180,6 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     if args.run:
-        config = {'concat': {'max_workers': 8, 'mask_features': ['Flow ID', 'Timestamp']}}  # Example config
+        config = {'concat': {'max_workers': 8, 'mask_features': ['Flow ID']}}  # Example config
         concatenator = FeatureConcatenator(config)
         concatenator.concatenate_features(args.dataset_dir, args.num_phases, store=True)
