@@ -88,7 +88,16 @@ class FeatureConcatenator:
                 if df is None:
                     continue  # Skip missing phases for this pcap
                 for _, row in df.iterrows():
-                    key = (row['Src IP'], row['Dst IP'], row['Src Port'], row['Dst Port'], row['Protocol'])
+                    src_ip = row['Src IP']
+                    dst_ip = row['Dst IP']
+                    src_port = row['Src Port']
+                    dst_port = row['Dst Port']
+                    proto = row['Protocol']
+                    # Canonicalize key for bidirectional flows: lower IP as src
+                    if src_ip > dst_ip:
+                        key = (dst_ip, src_ip, dst_port, src_port, proto)
+                    else:
+                        key = (src_ip, dst_ip, src_port, dst_port, proto)
                     ts = row['Timestamp']
                     row_dict = {col: row[col] for col in feature_columns}
                     grouped[key].append((ts, row_dict, ph))
@@ -108,15 +117,14 @@ class FeatureConcatenator:
                     pass
                 else:
                     if num_subs < num_phases:
-                        # Replicate first phase to fill
-                        first_feat = sub_features[0]
-                        sub_features.extend([first_feat] * (num_phases - num_subs))
-                        logging.debug(f"Short flow with {num_subs} phases, replicated last phase to fill {num_phases}")
+                        # Replicate last phase to fill (better than first, as last is often complete)
+                        last_feat = sub_features[-1]
+                        sub_features.extend([last_feat] * (num_phases - num_subs))
+                        logging.warning(f"Short flow with {num_subs} phases, replicated last phase to fill {num_phases}")
                     else:
-                        first_feats = sub_features[:num_phases]
-                        sub_features = first_feats
-                        logging.debug(f"Long flow with {num_subs} phases, truncated to first {num_phases}")
-                    continue
+                        # Truncate to first num_phases
+                        sub_features = sub_features[:num_phases]
+                        logging.warning(f"Long flow with {num_subs} phases, truncated to first {num_phases}")
 
                 # Concatenate into flat dict with suffixed keys
                 flat_row = {'Flow Key': '-'.join(map(str, key))}
