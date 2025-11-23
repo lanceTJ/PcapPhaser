@@ -111,11 +111,11 @@ class FeatureConcatenator:
                         # Replicate first phase to fill
                         first_feat = sub_features[0]
                         sub_features.extend([first_feat] * (num_phases - num_subs))
-                        logging.warning(f"Short flow with {num_subs} phases, replicated last phase to fill {num_phases}")
+                        logging.debug(f"Short flow with {num_subs} phases, replicated last phase to fill {num_phases}")
                     else:
                         first_feats = sub_features[:num_phases]
                         sub_features = first_feats
-                        logging.warning(f"Long flow with {num_subs} phases, truncated to first {num_phases}")
+                        logging.debug(f"Long flow with {num_subs} phases, truncated to first {num_phases}")
                     continue
 
                 # Concatenate into flat dict with suffixed keys
@@ -162,9 +162,9 @@ class FeatureConcatenator:
         for csv_file in csv_files:
             try:
                 df = pd.read_csv(csv_file)
-                # Extract basename: remove 'phase_n_' prefix and '.csv' suffix
+                # Extract basename: remove 'p_n_' prefix and '.csv' suffix
                 filename = os.path.basename(csv_file)
-                basename = filename.split(f'phase_{phase_num}_', 1)[-1].rsplit('.csv', 1)[0]
+                basename = filename.split(f'p_{phase_num}_', 1)[-1].rsplit('.csv', 1)[0]
                 dfs_with_basenames.append((df, basename))
             except Exception as e:
                 logging.warning(f"Failed to load {csv_file}: {e}")
