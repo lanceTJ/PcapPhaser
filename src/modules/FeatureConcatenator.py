@@ -120,6 +120,7 @@ class FeatureConcatenator:
 
                 # Concatenate into flat dict with suffixed keys
                 flat_row = {'Flow Key': '-'.join(map(str, key))}
+                flat_row['Timestamp'] = items[0][0] if items else ''  # Add earliest Timestamp for labeling
                 for ph in range(1, num_phases + 1):
                     for feat, val in sub_features[ph - 1].items():
                         flat_row[f"{feat}_p{ph}"] = val
