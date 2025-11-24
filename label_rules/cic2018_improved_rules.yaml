@@ -1,0 +1,368 @@
+
+# cic2018_improved_rules.yaml
+# Compact, machine-readable encoding of the "Improved CSE-CIC-IDS 2018" labeling logic.
+#（https://intrusion-detection.distrinet-research.be/CNS2022/CSECICIDS2018.html）
+# Times are UTC as in the documentation. Adjust if your CSV uses local time; or pre-convert.
+# Operators:
+#   ==, !=, >, >=, <, <=, in, not_in, any (wildcard), contains, regex, isnull, notnull
+# Special fields:
+#   time_start, time_end: ISO strings; rule matches if flow [FlowStart, FlowEnd] intersects [time_start, time_end].
+#   zero_fwd: shorthand for Total Length of Fwd Packets == 0
+#   zero_bwd: shorthand for Total Length of Bwd Packets == 0
+#   flow_duration_s: requires Flow Duration in seconds column name mapping in the script config.
+#   fwd_rst_flags, bwd_rst_flags: map to CICFlowMeter flag columns.
+#
+# Rule application:
+#   - Rules are evaluated in listed order. First match wins unless 'append_labels: true' is set.
+#   - If multiple rules match and 'priority' is present, highest priority (lower number) wins.
+#   - If nothing matches, label defaults to BENIGN.
+#
+# Column mapping in the Python script (edit if your columns differ):
+#   src_ip: Src IP / Source IP
+#   dst_ip: Dst IP / Destination IP
+#   src_port: Src Port / Source Port
+#   dst_port: Dst Port / Destination Port
+#   proto: Protocol (numeric or text accepted)
+#   t_start: Timestamp or StartTime
+#   t_end: EndTime (optional; defaults to t_start if absent)
+#   total_fwd_pkts: Total Fwd Packets
+#   total_fwd_len: Total Length of Fwd Packets
+#   total_bwd_len: Total Length of Bwd Packets
+#   flow_duration: Flow Duration (in seconds)
+#   fwd_rst_flags: Fwd RST Flags
+#   bwd_rst_flags: Bwd RST Flags
+#
+# Notes from upstream docs (2023 updates included):
+# - 2023-05-01: Botnet-Ares: modified 4 flows to Attempted (Cat2). Friday-02-03-2018 only.
+# - 2023-04-03: Small fixes across most files (<1000 flows).
+#
+meta:
+  source: "Improved CSE-CIC-IDS 2018"
+  updated: "2023-05-01"
+  default_label: "BENIGN"
+
+rules:
+
+  # 1. FTP-Patator (Attempted) - 2018-02-14
+  - label: "FTP-BruteForce - Attempted (Cat1 Port/System closed)"
+    priority: 10
+    match:
+      - { field: src_ip, op: "==", value: "18.221.219.4" }
+      - { field: dst_ip, op: "==", value: "172.31.69.25" }
+      - { field: time_start, op: "==", value: "2018-02-14T14:33:26" }
+      - { field: time_end, op: "==", value: "2018-02-14T16:10:31" }
+
+  - label: "FTP-BruteForce - Attempted (Cat4 Attack artefact)"
+    priority: 11
+    match:
+      - { field: src_ip, op: "==", value: "13.58.98.64" }
+      - { field: dst_ip, op: "==", value: "172.31.69.25" }
+      - { field: dst_port, op: "==", value: 21 }
+      - { field: time_start, op: "==", value: "2018-02-14T18:01:21.199541" }
+      - { field: time_end, op: "==", value: "2018-02-14T18:01:21.502585" }
+
+  # 1b. FTP-Patator (Attempted) - 2018-02-16
+  - label: "FTP-BruteForce - Attempted (Cat1 Port/System closed)"
+    priority: 12
+    match:
+      - { field: src_ip, op: "==", value: "13.59.126.31" }
+      - { field: dst_ip, op: "==", value: "172.31.69.25" }
+      - { field: time_start, op: "==", value: "2018-02-16T14:12:14" }
+      - { field: time_end, op: "==", value: "2018-02-16T15:05:13" }
+
+  # 2. SSH-Patator
+  - label: "SSH-BruteForce"
+    priority: 20
+    match:
+      - { field: src_ip, op: "==", value: "13.58.98.64" }
+      - { field: dst_ip, op: "==", value: "172.31.69.25" }
+      - { field: dst_port, op: "==", value: 22 }
+      - { field: time_start, op: "==", value: "2018-02-14T18:01:50" }
+      - { field: time_end, op: "==", value: "2018-02-14T19:32:30" }
+
+  - label: "SSH-BruteForce - Attempted (Cat0 No payload)"
+    priority: 21
+    match:
+      - { field: src_ip, op: "==", value: "13.58.98.64" }
+      - { field: dst_ip, op: "==", value: "172.31.69.25" }
+      - { field: dst_port, op: "==", value: 22 }
+      - { field: zero_fwd, op: "==", value: true }
+      - { field: time_start, op: "==", value: "2018-02-14T18:01:50" }
+      - { field: time_end, op: "==", value: "2018-02-14T19:32:30" }
+
+  # 3. DoS Hulk - 2018-02-16
+  - label: "DoS Hulk"
+    priority: 30
+    match:
+      - { field: src_ip, op: "==", value: "18.219.193.20" }
+      - { field: dst_ip, op: "==", value: "172.31.69.25" }
+      - { field: time_start, op: "==", value: "2018-02-16T17:45:27" }
+      - { field: time_end, op: "==", value: "2018-02-16T17:58:23" }
+
+  - label: "DoS Hulk - Attempted (Cat0 No payload)"
+    priority: 31
+    match:
+      - { field: src_ip, op: "==", value: "18.219.193.20" }
+      - { field: dst_ip, op: "==", value: "172.31.69.25" }
+      - { field: zero_fwd, op: "==", value: true }
+      - { field: time_start, op: "==", value: "2018-02-16T17:45:27" }
+      - { field: time_end, op: "==", value: "2018-02-16T17:58:23" }
+
+  # 4. DoS GoldenEye - 2018-02-15 (duration & flags conditions)
+  - label: "DoS GoldenEye"
+    priority: 40
+    match:
+      - { field: src_ip, op: "==", value: "18.219.211.138" }
+      - { field: dst_ip, op: "==", value: "172.31.69.25" }
+      - { field: any, op: "==", value: true }  # placeholder for bracket logic
+      - { field: time_window, op: "range", value: ["2018-02-15T13:27:42","2018-02-15T14:11:45"] }
+    extra_logic:
+      any_of:
+        - all_of:
+            - { field: fwd_rst_flags, op: "==", value: 0 }
+        - all_of:
+            - { field: flow_duration, op: ">=", value: 5.05 }
+
+  - label: "DoS GoldenEye - Attempted (Cat4 Attack artefact)"
+    priority: 41
+    match:
+      - { field: src_ip, op: "==", value: "18.219.211.138" }
+      - { field: dst_ip, op: "==", value: "172.31.69.25" }
+      - { field: fwd_rst_flags, op: ">", value: 0 }
+      - { field: flow_duration, op: "<", value: 5.05 }
+      - { field: time_window, op: "range", value: ["2018-02-15T13:27:42","2018-02-15T14:11:45"] }
+
+  - label: "DoS GoldenEye - Attempted (Cat6 Target Unresponsive)"
+    priority: 42
+    match:
+      - { field: src_ip, op: "==", value: "18.219.211.138" }
+      - { field: dst_ip, op: "==", value: "172.31.69.25" }
+      - { field: bwd_rst_flags, op: "==", value: 1 }
+      - { field: total_bwd_len, op: "==", value: 0 }
+      - { field: flow_duration, op: ">", value: 100 }
+      - { field: time_window, op: "range", value: ["2018-02-15T13:27:42","2018-02-15T14:11:45"] }
+
+  - label: "DoS GoldenEye - Attempted (Cat0 No payload)"
+    priority: 43
+    match:
+      - { field: src_ip, op: "==", value: "18.219.211.138" }
+      - { field: dst_ip, op: "==", value: "172.31.69.25" }
+      - { field: zero_fwd, op: "==", value: true }
+      - { field: time_window, op: "range", value: ["2018-02-15T13:27:42","2018-02-15T14:11:45"] }
+
+  # 5. DoS Slowloris - 2018-02-15
+  - label: "DoS Slowloris"
+    priority: 50
+    match:
+      - { field: src_ip, op: "==", value: "18.217.165.70" }
+      - { field: dst_ip, op: "==", value: "172.31.69.25" }
+      - { field: time_window, op: "range", value: ["2018-02-15T15:00:12","2018-02-15T15:42:01"] }
+
+  - label: "DoS Slowloris - Attempted (Cat0 No payload)"
+    priority: 51
+    match:
+      - { field: src_ip, op: "==", value: "18.217.165.70" }
+      - { field: dst_ip, op: "==", value: "172.31.69.25" }
+      - { field: zero_fwd, op: "==", value: true }
+      - { field: time_window, op: "range", value: ["2018-02-15T13:27:42","2018-02-15T14:11:45"] }
+
+  # 8. Web Attack - SQL (22-23 Feb)
+  - label: "Web Attack - SQL"
+    priority: 80
+    match:
+      - { field: src_ip, op: "==", value: "18.218.115.60" }
+      - { field: dst_ip, op: "==", value: "172.31.69.28" }
+      - { field: total_fwd_len, op: ">", value: 0 }
+      - { field: total_bwd_len, op: ">", value: 0 }
+      - { field: time_window, op: "range", value: ["2018-02-22T20:16:30.418906","2018-02-22T20:27:56.022793"] }
+
+  - label: "Web Attack - SQL - Attempted (Cat2 Startup/Teardown)"
+    priority: 81
+    match:
+      - { field: src_ip, op: "==", value: "18.218.115.60" }
+      - { field: dst_ip, op: "==", value: "172.31.69.28" }
+      - { field: time_window, op: "range", value: ["2018-02-22T20:14:30.169342","2018-02-22T20:14:58.599986"] }
+
+  - label: "Web Attack - SQL - Attempted (Cat0 No payload)"
+    priority: 82
+    match:
+      - { field: src_ip, op: "==", value: "18.218.115.60" }
+      - { field: dst_ip, op: "==", value: "172.31.69.28" }
+      - { field: zero_fwd, op: "==", value: true }
+      - { field: time_window, op: "range", value: ["2018-02-22T20:16:30.418906","2018-02-22T20:27:56.022793"] }
+
+  - label: "Web Attack - SQL"
+    priority: 83
+    match:
+      - { field: src_ip, op: "==", value: "18.218.115.60" }
+      - { field: dst_ip, op: "==", value: "172.31.69.28" }
+      - { field: total_fwd_len, op: ">", value: 0 }
+      - { field: total_bwd_len, op: ">", value: 0 }
+      - { field: time_window, op: "range", value: ["2018-02-23T19:06:32.126122","2018-02-23T19:17:24.947957"] }
+
+  # 9. Web Attack - XSS (22-23 Feb)
+  - label: "Web Attack - XSS"
+    priority: 90
+    match:
+      - { field: src_ip, op: "==", value: "18.218.115.60" }
+      - { field: dst_ip, op: "==", value: "172.31.69.28" }
+      - { field: src_port, op: "not_in", value: [63782, 64144] }
+      - { field: time_window, op: "range", value: ["2018-02-22T17:51:39.783923","2018-02-22T18:29:41.827037"] }
+
+  - label: "Web Attack - XSS - Attempted (Cat2 Startup/Teardown)"
+    priority: 91
+    match:
+      - { field: src_ip, op: "==", value: "18.218.115.60" }
+      - { field: dst_ip, op: "==", value: "172.31.69.28" }
+      - { field: src_port, op: "==", value: 63782 }
+      - { field: time_window, op: "range", value: ["2018-02-22T17:51:39.783923","2018-02-22T18:29:41.827037"] }
+
+  - label: "Web Attack - XSS - Attempted (Cat3 No malicious payload)"
+    priority: 92
+    match:
+      - { field: src_ip, op: "==", value: "18.218.115.60" }
+      - { field: dst_ip, op: "==", value: "172.31.69.28" }
+      - { field: src_port, op: "==", value: 64144 }
+      - { field: time_window, op: "range", value: ["2018-02-22T17:51:39.783923","2018-02-22T18:29:41.827037"] }
+
+  # 10. Web Attack - Brute Force (22-23 Feb)
+  - label: "Web Attack - Brute Force"
+    priority: 100
+    match:
+      - { field: src_ip, op: "==", value: "18.218.115.60" }
+      - { field: dst_ip, op: "==", value: "172.31.69.28" }
+      - { field: total_fwd_pkts, op: ">", value: 20 }
+      - { field: time_window, op: "range", value: ["2018-02-22T14:17:51.336902","2018-02-22T15:23:59.858533"] }
+
+  - label: "Web Attack - Brute Force - Attempted (Cat5 Implemented Incorrectly)"
+    priority: 101
+    match:
+      - { field: src_ip, op: "==", value: "18.218.115.60" }
+      - { field: dst_ip, op: "==", value: "172.31.69.28" }
+      - { field: total_fwd_pkts, op: "<=", value: 20 }
+      - { field: total_fwd_len, op: ">", value: 0 }
+      - { field: time_window, op: "range", value: ["2018-02-22T14:17:51.336902","2018-02-22T15:23:59.858533"] }
+
+  - label: "Web Attack - Brute Force - Attempted (Cat0 No payload)"
+    priority: 102
+    match:
+      - { field: src_ip, op: "==", value: "18.218.115.60" }
+      - { field: dst_ip, op: "==", value: "172.31.69.28" }
+      - { field: zero_fwd, op: "==", value: true }
+      - { field: time_window, op: "range", value: ["2018-02-22T14:17:51.336902","2018-02-22T15:23:59.858533"] }
+
+  # 11. Infiltration - Dropbox Download (28-02 & 01-03)
+  - label: "Infiltration - Dropbox Download"
+    priority: 110
+    match:
+      - { field: src_ip, op: "in", value: ["172.31.69.24","172.31.69.13"] }
+      - { field: dst_ip, op: "in", value: ["162.125.3.1","162.125.3.5","162.125.3.6","162.125.248.1","162.125.18.133"] }
+      - { field: time_window, op: "ranges", value: [["2018-02-28T14:33:24","2018-02-28T14:46:12"],["2018-02-28T17:42:51","2018-02-28T17:43:44"],["2018-03-01T13:53:10","2018-03-01T13:59:20"],["2018-03-01T14:03:52","2018-03-01T15:34:14"]] }
+
+  - label: "Infiltration - Dropbox Download - Attempted (Cat4 Artefact)"
+    priority: 111
+    match:
+      - { field: src_ip, op: "in", value: ["172.31.69.24","172.31.69.13"] }
+      - { field: dst_ip, op: "in", value: ["104.16.100.29","104.16.99.29","52.84.128.3","52.85.101.236","52.85.131.81","52.85.95.206","13.32.168.125","52.85.112.72"] }
+      - { field: time_window, op: "ranges", value: [["2018-02-28T14:33:24","2018-02-28T14:46:12"],["2018-02-28T17:42:51","2018-02-28T17:43:44"],["2018-03-01T13:53:10","2018-03-01T13:59:20"],["2018-03-01T14:03:52","2018-03-01T15:34:14"]] }
+
+  - label: "Infiltration - Dropbox Download - Attempted (Cat0 No payload)"
+    priority: 112
+    match:
+      - { field: src_ip, op: "in", value: ["172.31.69.24","172.31.69.13"] }
+      - { field: dst_ip, op: "in", value: ["162.125.3.1","162.125.3.5","162.125.3.6","162.125.248.1","162.125.18.133"] }
+      - { field: zero_fwd, op: "==", value: true }
+      - { field: time_window, op: "ranges", value: [["2018-02-28T14:33:24","2018-02-28T14:46:12"],["2018-02-28T17:42:51","2018-02-28T17:43:44"],["2018-03-01T13:53:10","2018-03-01T13:59:20"],["2018-03-01T14:03:52","2018-03-01T15:34:14"]] }
+
+  # 11.2 Infiltration - Communication Victim->Attacker
+  - label: "Infiltration - Communication Victim Attacker"
+    priority: 120
+    match:
+      - { field: src_ip, op: "in", value: ["172.31.69.24","172.31.69.13"] }
+      - { field: dst_ip, op: "==", value: "13.58.225.34" }
+      - { field: time_window, op: "ranges", value: [["2018-02-28T14:45:40","2018-02-28T16:08:55"],["2018-02-28T17:43:59","2018-02-28T18:40:00"],["2018-03-01T13:57:54","2018-03-01T13:59:05"],["2018-03-01T14:04:35","2018-03-01T18:17:25"],["2018-03-01T18:18:15","2018-03-01T19:37:21"]] }
+
+  - label: "Infiltration - Communication Victim Attacker - Attempted (Cat0 No payload)"
+    priority: 121
+    match:
+      - { field: src_ip, op: "in", value: ["172.31.69.24","172.31.69.13"] }
+      - { field: dst_ip, op: "==", value: "13.58.225.34" }
+      - { field: zero_fwd, op: "==", value: true }
+      - { field: time_window, op: "ranges", value: [["2018-02-28T14:45:40","2018-02-28T16:08:55"],["2018-02-28T17:43:59","2018-02-28T18:39:59"],["2018-03-01T13:57:54","2018-03-01T13:59:05"],["2018-03-01T14:04:35","2018-03-01T18:17:25"],["2018-03-01T18:18:15","2018-03-01T19:37:21"]] }
+
+  # 11.3 Infiltration - NMAP Portscan (exclude DHCP src port 68)
+  - label: "Infiltration - NMAP Portscan"
+    priority: 130
+    match:
+      - { field: src_ip, op: "in", value: ["172.31.69.24","172.31.69.13"] }
+      - { field: dst_ip, op: "in", value: ["172.31.69.1","172.31.69.10","172.31.69.11","172.31.69.12","172.31.69.13","172.31.69.14","172.31.69.16","172.31.69.17","172.31.69.19","172.31.69.20","172.31.69.23","172.31.69.4","172.31.69.5","172.31.69.6","172.31.69.8","172.31.69.9","172.31.69.7","172.31.69.22","172.31.69.15","172.31.69.21","172.31.69.18"] }
+      - { field: src_port, op: "!=", value: 68 }
+      - { field: time_window, op: "ranges", value: [["2018-02-28T14:46:22","2018-02-28T18:39:00.746247"],["2018-03-01T14:09:48.354333","2018-03-01T19:38:12.182726"]] }
+
+  # 12. Botnet Ares - 2018-03-02
+  - label: "Botnet Ares"
+    priority: 140
+    match:
+      - { field: any_ip, op: "in", value: ["18.219.211.138"] }
+      - { field: time_window, op: "range", value: ["2018-03-02T14:13:28","2018-03-02T19:54:52"] }
+
+  - label: "Botnet Ares - Attempted (Cat2 Startup/Teardown)"
+    priority: 141
+    match:
+      - { field: dst_ip, op: "==", value: "18.219.211.138" }
+      - { field: total_fwd_len, op: ">", value: 0 }
+      - { field: bwd_rst_flags, op: ">", value: 0 }
+      - { field: time_window, op: "range", value: ["2018-03-02T19:53:44","2018-03-02T19:54:52"] }
+
+  # 13. DDoS LOIC HTTP - 2018-02-20
+  - label: "DDoS-LOIC-HTTP"
+    priority: 150
+    match:
+      - { field: src_ip, op: "in", value: ["18.218.115.60","18.219.9.1","18.219.32.43","18.218.55.126","52.14.136.135","18.219.5.43","18.216.200.189","18.218.229.235","18.218.11.51","18.216.24.42"] }
+      - { field: dst_ip, op: "==", value: "172.31.69.25" }
+      - { field: proto, op: "in", value: [6,"6","TCP","tcp"] }
+      - { field: time_window, op: "range", value: ["2018-02-20T14:13:54","2018-02-20T15:16:49"] }
+
+  - label: "DDoS-LOIC-HTTP - Attempted (Cat0 No payload)"
+    priority: 151
+    match:
+      - { field: src_ip, op: "in", value: ["18.218.115.60","18.219.9.1","18.219.32.43","18.218.55.126","52.14.136.135","18.219.5.43","18.216.200.189","18.218.229.235","18.218.11.51","18.216.24.42"] }
+      - { field: dst_ip, op: "==", value: "172.31.69.25" }
+      - { field: proto, op: "in", value: [6,"6","TCP","tcp"] }
+      - { field: zero_fwd, op: "==", value: true }
+      - { field: time_window, op: "range", value: ["2018-02-20T14:13:54","2018-02-20T15:16:49"] }
+
+  # 14. DDoS LOIC UDP - 2018-02-20 & 2018-02-21 (with ICMP attempted)
+  - label: "DDoS-LOIC-UDP"
+    priority: 160
+    match:
+      - { field: src_ip, op: "in", value: ["18.218.115.60","18.219.9.1","18.219.32.43","18.218.55.126","52.14.136.135","18.219.5.43","18.216.200.189","18.218.229.235","18.218.11.51","18.216.24.42"] }
+      - { field: dst_ip, op: "==", value: "172.31.69.25" }
+      - { field: proto, op: "in", value: [17,"17","UDP","udp"] }
+      - { field: time_window, op: "ranges", value: [["2018-02-20T17:14:17","2018-02-20T17:29:16"],["2018-02-21T14:08:51","2018-02-21T14:43:39"]] }
+
+  - label: "DDoS-LOIC-UDP - Attempted (Cat6 Target unresponsive via ICMP)"
+    priority: 161
+    match:
+      - { field: src_ip, op: "in", value: ["18.218.115.60","18.219.9.1","18.219.32.43","18.218.55.126","52.14.136.135","18.219.5.43","18.216.200.189","18.218.229.235","18.218.11.51","18.216.24.42"] }
+      - { field: dst_ip, op: "==", value: "172.31.69.25" }
+      - { field: proto, op: "in", value: [1,"1","ICMP","icmp"] }
+      - { field: time_window, op: "ranges", value: [["2018-02-20T17:14:17","2018-02-20T17:29:16"],["2018-02-21T14:08:51","2018-02-21T14:43:39"]] }
+
+  - label: "DDoS-LOIC-UDP - Attempted (Cat0 No payload)"
+    priority: 162
+    match:
+      - { field: src_ip, op: "in", value: ["18.218.115.60","18.219.9.1","18.219.32.43","18.218.55.126","52.14.136.135","18.219.5.43","18.216.200.189","18.218.229.235","18.218.11.51","18.216.24.42"] }
+      - { field: dst_ip, op: "==", value: "172.31.69.25" }
+      - { field: proto, op: "in", value: [17,"17","UDP","udp"] }
+      - { field: zero_fwd, op: "==", value: true }
+      - { field: time_window, op: "ranges", value: [["2018-02-20T17:14:17","2018-02-20T17:29:16"],["2018-02-21T14:08:51","2018-02-21T14:43:39"]] }
+
+  # 15. DDoS HOIC - 2018-02-21
+  - label: "DDoS-HOIC"
+    priority: 170
+    match:
+      - { field: src_ip, op: "in", value: ["18.218.115.60","18.219.9.1","18.219.32.43","18.218.55.126","52.14.136.135","18.219.5.43","18.216.200.189","18.218.229.235","18.218.11.51","18.216.24.42"] }
+      - { field: dst_ip, op: "==", value: "172.31.69.25" }
+      - { field: proto, op: "in", value: [6,"6","TCP","tcp"] }
+      - { field: time_window, op: "range", value: ["2018-02-21T18:11:08","2018-02-21T19:05:54"] }
