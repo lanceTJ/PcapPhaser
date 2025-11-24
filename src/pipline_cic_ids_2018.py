@@ -159,4 +159,12 @@ def main():
     print(f"Pipeline completed for {args.input_dir} under {dataset_dir}.")
 
 if __name__ == '__main__':
-    main()
+    import time
+    start_time = time.time()
+    try:
+        main()
+    except Exception as e:
+        print(f"An error occurred: {e}")
+    finally:
+        end_time = time.time()
+        print(f"Total execution time: {end_time - start_time} seconds")
