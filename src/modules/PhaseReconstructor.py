@@ -80,7 +80,8 @@ class PhaseReconstructor:
         if store:
             os.makedirs(output_base_dir, exist_ok=True)
             for ph in range(1, self.num_phases + 1):
-                output_path = os.path.join(output_base_dir, f'phase_{ph}', f'p_{ph}_{store_file_base}.pcap')
+                filename = f'p_{ph}_{store_file_base}' if store_file_base.endswith('.pcap') else f'p_{ph}_{store_file_base}.pcap'
+                output_path = os.path.join(output_base_dir, f'phase_{ph}', filename)
                 output_paths[ph] = self._save_phased_pcap(phase_lists[ph], output_path)
 
         print(f'Reconstructed {len(output_paths)} phased pcaps from {original_pcap_path} under {output_base_dir}')
@@ -192,6 +193,9 @@ class PhaseReconstructor:
         """
         writing_flag = output_path + '.writing'
         success = False
+        output_dir = os.path.dirname(output_path)
+        if output_dir and not os.path.exists(output_dir):
+            os.makedirs(output_dir, exist_ok=True)
         open(writing_flag, 'w').close()  # Create writing flag
         try:
             wrpcap(output_path, pkts)
