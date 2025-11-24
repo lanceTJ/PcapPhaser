@@ -1,4 +1,4 @@
-# src/pcap_phaser_pipeline.py
+# src/pipline_cic_ids_2018.py
 import argparse
 import sys
 import os
@@ -22,6 +22,7 @@ def main():
     parser = argparse.ArgumentParser(description='Full pipeline for generating phased datasets from PCAP files using PcapPhaser modules.')
     parser.add_argument('--config', type=str, required=True, help='Path to config.ini file.')
     parser.add_argument('--input_dir', type=str, required=True, help='Path to input date directory, e.g., pcapdata/Friday-02-03-2018.')
+    parser.add_argument('--output_dir', type=str, required=True, help='Path to output date directory, e.g., workspace/Friday-02-03-2018')
     parser.add_argument('--dataset', type=str, default='dataset1', help='Dataset name for output directory under each date dir.')
     parser.add_argument('--run', action='store_true', help='Run the pipeline now.')
 
@@ -57,7 +58,7 @@ def main():
         sys.exit(1)
 
     # Dataset dir under the date dir
-    dataset_dir = os.path.join(args.input_dir, args.dataset)
+    dataset_dir = os.path.join(args.output_dir, args.dataset)
     os.makedirs(dataset_dir, exist_ok=True)
 
     # Save config to dataset_dir for traceability
