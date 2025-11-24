@@ -21,7 +21,7 @@ done
 TARGET_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TEMP_DIR="$TARGET_DIR/temp_cicflowmeter_src"
 DIST_DIR="$TARGET_DIR/cfm_dist"
-GRADLE_ZIP="$TEMP_DIR/gradle-4.10.2-all.zip"
+GRADLE_ZIP="$TEMP_DIR/gradle-4.2-all.zip"
 PROPERTIES_FILE="$TEMP_DIR/gradle/wrapper/gradle-wrapper.properties"
 
 echo "=== PcapPhaser CICFlowMeter Build ==="
@@ -61,7 +61,7 @@ fi
 
 # Step: Force wrapper to use local zip (completely offline build)
 echo "Patching gradle-wrapper.properties to use local distribution..."
-sed -i "s|distributionUrl=.*|distributionUrl=file:\\\\/$GRADLE_ZIP|g" "$PROPERTIES_FILE"
+sed -i "s|distributionUrl=.*|distributionUrl=file:\\\\$GRADLE_ZIP|g" "$PROPERTIES_FILE"
 
 # Force Java 8 for build (your environment has it)
 JAVA8_HOME=$(ls -d /usr/lib/jvm/java-8-openjdk* | head -1)  # auto find
