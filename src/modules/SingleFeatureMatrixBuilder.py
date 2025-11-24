@@ -1,6 +1,7 @@
 import argparse
 import sys
 import os
+import ast
 import numpy as np
 from typing import Dict
 from collections import defaultdict
@@ -47,6 +48,7 @@ class SingleFeatureMatrixBuilder:
     Computes U (mean), M (M2), J (dissimilarity) using Welford's method with Numba acceleration.
     Supports saving to .npz with integrity flag.
     """
+
     def __init__(self, config: dict = None):
         """
         :param config: Dict with 'pss' section containing optional 'allowed_feature_names' (list of str), 'lambda_dict' (dict of str to float), and 'max_flow_length' (int, default 1000).
@@ -56,9 +58,14 @@ class SingleFeatureMatrixBuilder:
         D_lambda_dict = {'packet_length': 1e-3, 'inter_arrival_time': 1e-3, 'up_down_rate': 1e-3, 'direction': 1e-3}
         D_max_flow_length = 1000
         if config is not None:
-            self.allowed_feature_names = config.get('pss', {}).get('allowed_feature_names', D_allowed_feature_names)
-            self.lambda_dict = config.get('pss', {}).get('lambda_dict', D_lambda_dict)
-            self.max_flow_length = config.get('pss', {}).get('max_flow_length', D_max_flow_length)
+            allowed_names = config.get('pss', {}).get('allowed_feature_names', D_allowed_feature_names)
+            if isinstance(allowed_names, str):
+                allowed_names = [ft.strip() for ft in allowed_names.split(',')]
+            self.allowed_feature_names = allowed_names
+            lambda_dict_str = config.get('pss', {}).get('lambda_dict', str(D_lambda_dict))
+            self.lambda_dict = ast.literal_eval(lambda_dict_str)
+            max_flow_length_str = config.get('pss', {}).get('max_flow_length', '1000')
+            self.max_flow_length = int(max_flow_length_str)
         else:
             self.allowed_feature_names = D_allowed_feature_names
             self.lambda_dict = D_lambda_dict
