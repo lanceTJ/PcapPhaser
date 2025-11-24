@@ -44,7 +44,7 @@ class AutoLabeler:
                         cond['value'] = [self._convert_time_str(v) for v in cond['value']]
                     elif cond['op'] == 'ranges':
                         cond['value'] = [[self._convert_time_str(subv) for subv in sublist] for sublist in cond['value']]
-        self._print_bot_rules()  # Call debug function after conversion
+        # self._print_bot_rules()
 
     def _print_bot_rules(self):
         """
