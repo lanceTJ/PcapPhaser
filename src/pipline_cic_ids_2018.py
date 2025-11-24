@@ -116,7 +116,7 @@ def main():
             marks_path = os.path.join(marks_dir, f'{pcap_basename}_matrices_fused_phase_marks.json')
             if not os.path.exists(marks_path):
                 print(f"Dividing phases for {num_phases} phases on {pcap_basename}.")
-                config['pss']['num_phases'] = str(num_phases)  # Temporarily update for this run
+                config['pss']['num_phases'] = num_phases
                 divider = PhaseDivider(config)
                 phase_marks = divider.divide_phases(fused_data, marks_dir, pcap_basename, store=True)
             else:
@@ -129,7 +129,7 @@ def main():
             phased_pcap_basename = f'{pcap_basename}.pcap'  # Add .pcap for output
             if not all(os.path.exists(os.path.join(phased_pcap_root, f'phase_{ph}', f'p_{ph}_{phased_pcap_basename}')) for ph in range(1, num_phases + 1)):
                 print(f"Reconstructing phased pcaps for {num_phases} phases on {pcap_basename}.")
-                config['pss']['num_phases'] = str(num_phases)
+                config['pss']['num_phases'] = num_phases
                 recon = PhaseReconstructor(config)
                 recon.reconstruct_phases(phase_marks, pcap_path, phased_pcap_root, phased_pcap_basename, store=True)
 
