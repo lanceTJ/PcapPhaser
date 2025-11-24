@@ -37,14 +37,21 @@ class FeatureExtractor:
             self.max_flow_length = config.get('pss', {}).get('max_flow_length', 1000)
             self.min_flow_length = config.get('pss', {}).get('min_flow_length', 3)
             self.timeout_sec = config.get('pss', {}).get('timeout_sec', 600)
-            self.allowed_feature_names = config.get('pss', {}).get('allowed_feature_names', D_allowed_feature_names)
+            allowed_names = config.get('pss', {}).get('allowed_feature_names', D_allowed_feature_names)
+            if isinstance(allowed_names, str):
+                allowed_names = [ft.strip() for ft in allowed_names.split(',')]
+            self.allowed_feature_names = allowed_names
         else:
             self.max_flow_length = 1000
             self.min_flow_length = 3
             self.timeout_sec = 600
             self.allowed_feature_names = D_allowed_feature_names
             
-    def extract_features(self, pcap_path: str, feature_type: Union[str, List[str]], output_base_dir: str = 'feature_matrix', store: bool = True) -> Dict[str, dict]:
+    def extract_features(self,
+                         pcap_path: str,
+                         feature_type: Union[str, List[str]],
+                         output_base_dir: str = 'feature_matrix',
+                         store: bool = True) -> Dict[str, dict]:
         """
         Extract features for all flows in the PCAP, supporting single or multiple feature types.
         :param pcap_path: Path to PCAP file.
@@ -54,7 +61,7 @@ class FeatureExtractor:
         :return: Dict {feature_type: {flow_id: np.array(feature_seq)}}, simplified if single type.
         """
         feature_types = [feature_type] if isinstance(feature_type, str) else feature_type
-        supported_features = self.allowed_feature_names
+        supported_features = set(self.allowed_feature_names)
         if not set(feature_types).issubset(supported_features):
             raise ValueError(f"Unsupported features: {set(feature_types) - supported_features}, supported: {supported_features}")
         
