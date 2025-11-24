@@ -34,9 +34,12 @@ class FeatureExtractor:
         """
         D_allowed_feature_names = {'packet_length', 'inter_arrival_time', 'up_down_rate', 'direction'}
         if config is not None:
-            self.max_flow_length = config.get('pss', {}).get('max_flow_length', 1000)
-            self.min_flow_length = config.get('pss', {}).get('min_flow_length', 3)
-            self.timeout_sec = config.get('pss', {}).get('timeout_sec', 600)
+            max_flow_length_str = config.get('pss', {}).get('max_flow_length', '1000')
+            self.max_flow_length = int(max_flow_length_str)
+            min_flow_length_str = config.get('pss', {}).get('min_flow_length', '3')
+            self.min_flow_length = int(min_flow_length_str)
+            timeout_sec_str = config.get('pss', {}).get('timeout_sec', '600')
+            self.timeout_sec = float(timeout_sec_str)
             allowed_names = config.get('pss', {}).get('allowed_feature_names', D_allowed_feature_names)
             if isinstance(allowed_names, str):
                 allowed_names = [ft.strip() for ft in allowed_names.split(',')]
@@ -44,7 +47,7 @@ class FeatureExtractor:
         else:
             self.max_flow_length = 1000
             self.min_flow_length = 3
-            self.timeout_sec = 600
+            self.timeout_sec = 600.0
             self.allowed_feature_names = D_allowed_feature_names
             
     def extract_features(self,
