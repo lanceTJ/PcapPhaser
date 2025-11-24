@@ -42,7 +42,9 @@ def main():
     feature_types = config.get('pss', {}).get('allowed_feature_names', ['packet_length', 'inter_arrival_time', 'direction', 'up_down_rate'])
     if isinstance(feature_types, str):
         feature_types = [ft.strip() for ft in feature_types.split(',')]
-    num_phases_list = [int(p) for p in config.get('pss', {}).get('num_phases', '2,3,4').split(',')]
+    num_phases_raw = config.get('pss', {}).get('num_phases', '2,3,4')
+    num_phases_clean = num_phases_raw.split(';')[0].strip()  # Remove inline comment if present
+    num_phases_list = [int(p) for p in num_phases_clean.split(',')]
     feature_matrix_dir = 'feature_matrix'  # Global feature_matrix at root
 
     # Get pcap dir under input_dir
