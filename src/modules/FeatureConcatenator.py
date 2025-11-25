@@ -22,6 +22,7 @@ class FeatureConcatenator:
         self.mask_features = config.get('concat', {}).get('mask_features', []) if config else []
         self.max_workers = config.get('concat', {}).get('max_workers', max(4, os.cpu_count() or 4)) if config else max(4, os.cpu_count() or 4)
         self.timeout_sec = config.get('concat', {}).get('timeout_sec', 600.0) if config else 600.0  # Default timeout in seconds
+        self.date_format = config.get('concat', {}).get('date_format', '%d/%m/%Y %I:%M:%S %p') if config else '%d/%m/%Y %I:%M:%S %p'  # Default timestamp format
 
     def concatenate_features(self,
                              phase_base_dir: str,
@@ -101,7 +102,7 @@ class FeatureConcatenator:
                 phase_items = grouped[key]
                 # Debug log: key and per-ph items without row_dict
                 ph_ts_dict = {ph: [item[0] for item in phase_items[ph]] for ph in phase_items}
-                logging.warning(f"Flow key={key}, per-phase timestamps: {ph_ts_dict}")
+                logging.debug(f"Flow key={key}, per-phase timestamps: {ph_ts_dict}")
 
                 # Aggregate subflows by phase
                 sub_features = self._aggregate_subflows_by_phase(phase_items, num_phases)
@@ -151,7 +152,7 @@ class FeatureConcatenator:
         """
         sub_features = [{} for _ in range(num_phases)]  # Init empty dict per phase
         if 1 not in phase_items or not phase_items[1]:
-            logging.debug("No phase 1 items, skipping aggregation")
+            logging.warning("No phase 1 items, skipping aggregation")
             return sub_features  # Empty if no phase 1
 
         # Sort per phase (ensure, though already in loop)
@@ -160,7 +161,7 @@ class FeatureConcatenator:
 
         # Start with phase 1: aggregate all items in phase 1 to single feat
         sub_features[0] = self._aggregate_phase_feats(phase_items[1])
-        last_ts = datetime.fromisoformat(phase_items[1][-1][0])  # Last ts of phase 1 (assume isoformat)
+        last_ts = datetime.strptime(phase_items[1][-1][0], self.date_format)  # Last ts of phase 1
 
         # For ph=2 to num_phases
         for ph in range(2, num_phases + 1):
@@ -173,7 +174,7 @@ class FeatureConcatenator:
             # Check each item in current ph
             selected_items = []
             for ts_str, row_dict in phase_items[ph]:
-                curr_ts = datetime.fromisoformat(ts_str)
+                curr_ts = datetime.strptime(ts_str, self.date_format)
                 delta = (curr_ts - last_ts).total_seconds()
                 if delta < self.timeout_sec:
                     selected_items.append((ts_str, row_dict))
