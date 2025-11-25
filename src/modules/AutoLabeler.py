@@ -27,7 +27,7 @@ class AutoLabeler:
         self.time_zone_adjustment = config.get('label', {}).get('time_zone_adjustment', False) if config else False
         self.time_format = config.get('label', {}).get('time_format', '%d/%m/%Y %I:%M:%S %p') if config else '%d/%m/%Y %I:%M:%S %p'
         self.rules = self._load_rules()
-        self.local_offset = datetime.now() - datetime.now(timezone.utc)
+        self.local_offset = datetime.now() - datetime.utcnow()
         self.local_offset -= timedelta(microseconds=self.local_offset.microseconds)
         if self.time_zone_adjustment:
             logging.info(f"[AutoLabeler] Adjusting rule times to local timezone with offset {self.local_offset}.")
