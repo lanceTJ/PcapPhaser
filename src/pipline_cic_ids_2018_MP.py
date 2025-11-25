@@ -1,4 +1,4 @@
-# src/pipline_cic_ids_2018.py
+# src/pipline_cic_ids_2018_MP.py
 import argparse
 import sys
 import os
@@ -20,6 +20,36 @@ from modules.CFMRunner import CFMRunner
 from modules.FeatureConcatenator import FeatureConcatenator
 from modules.AutoLabeler import AutoLabeler
 from modules.utils import load_config
+
+def clean_incomplete_files(output_dir):
+    """
+    Recursively scan the output directory for .writing files and delete both the .writing file
+    and the corresponding main file (without .writing suffix) if it exists.
+    """
+    deleted_files = []
+    for root, dirs, files in os.walk(output_dir):
+        for file in files:
+            if file.endswith('.writing'):
+                writing_path = os.path.join(root, file)
+                main_file = file[:-8]  # Remove '.writing' suffix
+                main_path = os.path.join(root, main_file)
+                if os.path.exists(main_path):
+                    try:
+                        os.remove(main_path)
+                        deleted_files.append(main_path)
+                    except OSError as e:
+                        print(f"[Cleanup] Failed to delete main file {main_path}: {e}")
+                try:
+                    os.remove(writing_path)
+                    deleted_files.append(writing_path)
+                except OSError as e:
+                    print(f"[Cleanup] Failed to delete writing file {writing_path}: {e}")
+    if deleted_files:
+        print(f"[Cleanup] Deleted {len(deleted_files)} incomplete files: ")
+        for file in deleted_files:
+            print(f'[Cleanup] -->{file}<--')
+    else:
+        print("[Cleanup] No incomplete files found.")
 
 def process_pcap(pcap_file, args, config, feature_types, num_phases_list, feature_matrix_dir, dataset_dir):
     """
@@ -154,6 +184,8 @@ def main():
     # Load unified config
     config = load_config(args.config)  # Returns dict from utils.py
     print(f"[PipeLine] Configuration loaded: {config}")
+    # Clean incomplete files before starting
+    clean_incomplete_files(args.output_dir)
     # Extend config with sections for all modules
     full_config = configparser.ConfigParser()
     full_config.read(args.config)
