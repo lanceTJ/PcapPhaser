@@ -1,13 +1,12 @@
-# filename: FeatureConcatenator.py
+# src/modules/FeatureConcatenator.py
 import argparse
-import sys
 import os
 import pandas as pd
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, Tuple
 from collections import defaultdict
-from datetime import datetime  # For timestamp parsing and delta calculation
+from datetime import datetime
 
 class FeatureConcatenator:
     """
@@ -91,7 +90,16 @@ class FeatureConcatenator:
                 if df is None:
                     continue  # Skip missing phases for this pcap
                 for _, row in df.iterrows():
-                    key = (row['Src IP'], row['Dst IP'], row['Src Port'], row['Dst Port'], row['Protocol'])
+                    src_ip = row['Src IP']
+                    dst_ip = row['Dst IP']
+                    src_port = row['Src Port']
+                    dst_port = row['Dst Port']
+                    proto = row['Protocol']
+                    # Normalize key for bidirectional flows: min IP as src, min port as src_port
+                    if src_ip > dst_ip or (src_ip == dst_ip and src_port > dst_port):
+                        key = (dst_ip, src_ip, dst_port, src_port, proto)
+                    else:
+                        key = (src_ip, dst_ip, src_port, dst_port, proto)
                     ts = row['Timestamp']
                     row_dict = {col: row[col] for col in feature_columns}
                     grouped[key][ph].append((ts, row_dict))
@@ -152,7 +160,7 @@ class FeatureConcatenator:
         """
         sub_features = [{} for _ in range(num_phases)]  # Init empty dict per phase
         if 1 not in phase_items or not phase_items[1]:
-            logging.warning("No phase 1 items, skipping aggregation")
+            logging.debug("No phase 1 items, skipping aggregation")
             return sub_features  # Empty if no phase 1
 
         # Sort per phase (ensure, though already in loop)
