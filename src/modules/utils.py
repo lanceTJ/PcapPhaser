@@ -48,5 +48,8 @@ def load_config(config_path='config.ini'):
             'rules_file': config['label'].get('rules_file', '../rules_file/cic_improved_2018_rules.yaml'),
             'time_zone_adjustment': config['label'].getboolean('time_zone_adjustment', False),
             'time_format': config['label'].get('time_format', '%d/%m/%Y %I:%M:%S %p'),
+        },
+        'pipeline': {
+            'pcap_workers': config['pipeline'].getint('pcap_workers',20),
         }
     }
