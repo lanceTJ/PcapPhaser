@@ -104,6 +104,8 @@ class FeatureConcatenator:
 
             # Process groups to create concatenated rows (same as original)
             concatenated_rows = []
+            long_flow_count = 0
+            short_flow_count = 0
             for key, items in grouped.items():
                 # Sort by timestamp
                 items.sort(key=lambda x: x[0])
@@ -118,13 +120,23 @@ class FeatureConcatenator:
                 else:
                     if num_subs < num_phases:
                         # Replicate last phase to fill (better than first, as last is often complete)
-                        last_feat = sub_features[-1]
-                        sub_features.extend([last_feat] * (num_phases - num_subs))
-                        logging.warning(f"Short flow with {num_subs} phases, replicated last phase to fill {num_phases}")
+                        # last_feat = sub_features[-1]
+                        # sub_features.extend([last_feat] * (num_phases - num_subs))
+                        # logging.warning(f"Short flow with {num_subs} phases, replicated last phase to fill {num_phases}")
+                        
+                        # Short flow: skip
+                        logging.debug(f"Short flow with {num_subs} phases, skip")
+                        short_flow_count += 1
+                        continue
                     else:
                         # Truncate to first num_phases
-                        sub_features = sub_features[:num_phases]
-                        logging.warning(f"Long flow with {num_subs} phases, truncated to first {num_phases}")
+                        # sub_features = sub_features[:num_phases]
+                        # logging.warning(f"Long flow with {num_subs} phases, truncated to first {num_phases}")
+                        
+                        # Long flow: skip
+                        logging.debug(f"Long flow with {num_subs} phases, skip")
+                        long_flow_count += 1
+                        continue
 
                 # Concatenate into flat dict with suffixed keys
                 flat_row = {'Flow Key': '-'.join(map(str, key))}
@@ -137,6 +149,9 @@ class FeatureConcatenator:
             if not concatenated_rows:
                 logging.warning(f"No features to concatenate for pcap {basename}")
                 continue
+
+            if long_flow_count > 0 or short_flow_count > 0:
+                logging.warning(f"[{basename}] Processed {len(concatenated_rows)} flows: {long_flow_count} long flows skipped, {short_flow_count} short flows skipped")
 
             result_df = pd.DataFrame(concatenated_rows)
             output_csv_path = os.path.join(concat_output_root, f"{basename}_concat.csv")
