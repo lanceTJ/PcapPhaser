@@ -148,7 +148,7 @@ def main():
 
             # Step 3.4: Concatenate features
             concat_output = os.path.join(phase_base_dir, 'concat_csv')
-            concat_path = os.path.join(concat_output, f'{phased_pcap_basename}_Flow_concat.csv')  # Match _Flow_concat.csv
+            concat_path = os.path.join(concat_output, f'{phased_pcap_basename}_Flow_concat.csv')
             if not os.path.exists(concat_path):
                 print(f"[PipeLine] Running FeatureConcatenator for {num_phases} phases on {pcap_basename}.")
                 concatenator = FeatureConcatenator(config)
@@ -158,7 +158,7 @@ def main():
 
             # Step 3.5: Auto label
             labeled_output = os.path.join(phase_base_dir, 'labeled_csv')
-            labeled_path = os.path.join(labeled_output, f'{phased_pcap_basename}_Flow_labeled.csv')  # Match _Flow_labeled.csv
+            labeled_path = os.path.join(labeled_output, f'{phased_pcap_basename}_Flow_labeled.csv')
             if not os.path.exists(labeled_path):
                 print(f"[PipeLine] Running AutoLabeler for {num_phases} phases on {pcap_basename}.")
                 labeler = AutoLabeler(config)
@@ -175,6 +175,7 @@ if __name__ == '__main__':
         main()
     except Exception as e:
         print(f"[PipeLine] An error occurred: {e}")
+        raise e
     finally:
         end_time = time.time()
         print(f"[PipeLine] Total execution time: {end_time - start_time} seconds")
