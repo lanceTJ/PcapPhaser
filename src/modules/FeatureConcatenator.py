@@ -7,6 +7,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, Tuple
 from collections import defaultdict
+from datetime import datetime  # For timestamp parsing and delta calculation
 
 class FeatureConcatenator:
     """
@@ -20,6 +21,7 @@ class FeatureConcatenator:
         """
         self.mask_features = config.get('concat', {}).get('mask_features', []) if config else []
         self.max_workers = config.get('concat', {}).get('max_workers', max(4, os.cpu_count() or 4)) if config else max(4, os.cpu_count() or 4)
+        self.timeout_sec = config.get('concat', {}).get('timeout_sec', 600.0) if config else 600.0  # Default timeout in seconds
 
     def concatenate_features(self,
                              phase_base_dir: str,
@@ -80,78 +82,42 @@ class FeatureConcatenator:
         # Process each pcap_group independently
         results = {}
         for basename, phase_dfs in pcap_groups.items():
-            # Local grouped for this pcap
-            grouped = defaultdict(list)  # {(src_ip, dst_ip, src_port, dst_port, proto): [(timestamp, row_dict, ph), ...]}
+            # Local grouped for this pcap: {key: {ph: [(ts, row_dict), ...]}}
+            grouped = defaultdict(lambda: defaultdict(list))
 
             for ph in range(1, num_phases + 1):
                 df = phase_dfs.get(ph)
                 if df is None:
                     continue  # Skip missing phases for this pcap
                 for _, row in df.iterrows():
-                    src_ip = row['Src IP']
-                    dst_ip = row['Dst IP']
-                    src_port = row['Src Port']
-                    dst_port = row['Dst Port']
-                    proto = row['Protocol']
-                    # Canonicalize key for bidirectional flows: lower IP as src
-                    if src_ip > dst_ip:
-                        key = (dst_ip, src_ip, dst_port, src_port, proto)
-                    else:
-                        key = (src_ip, dst_ip, src_port, dst_port, proto)
+                    key = (row['Src IP'], row['Dst IP'], row['Src Port'], row['Dst Port'], row['Protocol'])
                     ts = row['Timestamp']
                     row_dict = {col: row[col] for col in feature_columns}
-                    grouped[key].append((ts, row_dict, ph))
+                    grouped[key][ph].append((ts, row_dict))
 
-            # Process groups to create concatenated rows (same as original)
+            # Process groups to create concatenated rows
             concatenated_rows = []
-            long_flow_count = 0
-            short_flow_count = 0
-            for key, items in grouped.items():
-                # Sort by timestamp
-                items.sort(key=lambda x: x[0])
-                sub_features = [item[1] for item in items]
-                num_subs = len(sub_features)
-                if num_subs == 1:
-                    # Short flow: replicate to all phases
-                    sub_features = sub_features * num_phases
-                elif num_subs == num_phases:
-                    # Long flow: use as is
-                    pass
-                else:
-                    if num_subs < num_phases:
-                        # Replicate last phase to fill (better than first, as last is often complete)
-                        # last_feat = sub_features[-1]
-                        # sub_features.extend([last_feat] * (num_phases - num_subs))
-                        # logging.warning(f"Short flow with {num_subs} phases, replicated last phase to fill {num_phases}")
-                        
-                        # Short flow: skip
-                        logging.debug(f"Short flow with {num_subs} phases, skip")
-                        short_flow_count += 1
-                        continue
-                    else:
-                        # Truncate to first num_phases
-                        # sub_features = sub_features[:num_phases]
-                        # logging.warning(f"Long flow with {num_subs} phases, truncated to first {num_phases}")
-                        
-                        # Long flow: skip
-                        logging.debug(f"Long flow with {num_subs} phases, skip")
-                        long_flow_count += 1
-                        continue
+            for key in grouped:
+                phase_items = grouped[key]
+                # Debug log: key and per-ph items without row_dict
+                ph_ts_dict = {ph: [item[0] for item in phase_items[ph]] for ph in phase_items}
+                logging.warning(f"Flow key={key}, per-phase timestamps: {ph_ts_dict}")
+
+                # Aggregate subflows by phase
+                sub_features = self._aggregate_subflows_by_phase(phase_items, num_phases)
 
                 # Concatenate into flat dict with suffixed keys
                 flat_row = {'Flow Key': '-'.join(map(str, key))}
-                flat_row['Timestamp'] = items[0][0] if items else ''  # Add earliest Timestamp for labeling
+                flat_row['Timestamp'] = min(item[0] for ph_items in phase_items.values() for item in ph_items) if phase_items else ''  # Earliest ts across all
                 for ph in range(1, num_phases + 1):
-                    for feat, val in sub_features[ph - 1].items():
-                        flat_row[f"{feat}_p{ph}"] = val
+                    if sub_features[ph - 1]:
+                        for feat, val in sub_features[ph - 1].items():
+                            flat_row[f"{feat}_p{ph}"] = val
                 concatenated_rows.append(flat_row)
 
             if not concatenated_rows:
                 logging.warning(f"No features to concatenate for pcap {basename}")
                 continue
-
-            if long_flow_count > 0 or short_flow_count > 0:
-                logging.warning(f"[{basename}] Processed {len(concatenated_rows)} flows: {long_flow_count} long flows skipped, {short_flow_count} short flows skipped")
 
             result_df = pd.DataFrame(concatenated_rows)
             output_csv_path = os.path.join(concat_output_root, f"{basename}_concat.csv")
@@ -175,6 +141,79 @@ class FeatureConcatenator:
                 print(f"Dry-run completed for {basename}, no file saved")
 
         return results
+
+    def _aggregate_subflows_by_phase(self, phase_items: Dict[int, List[Tuple[str, Dict]]], num_phases: int) -> List[Dict]:
+        """
+        Aggregate subflows per phase for a single key, starting from phase 1, checking timeouts between phases.
+        :param phase_items: {ph: [(ts, row_dict), ...]} with sorted ts per ph
+        :param num_phases: Number of phases
+        :return: List of aggregated feat dict per phase (length num_phases)
+        """
+        sub_features = [{} for _ in range(num_phases)]  # Init empty dict per phase
+        if 1 not in phase_items or not phase_items[1]:
+            logging.debug("No phase 1 items, skipping aggregation")
+            return sub_features  # Empty if no phase 1
+
+        # Sort per phase (ensure, though already in loop)
+        for ph in phase_items:
+            phase_items[ph].sort(key=lambda x: x[0])
+
+        # Start with phase 1: aggregate all items in phase 1 to single feat
+        sub_features[0] = self._aggregate_phase_feats(phase_items[1])
+        last_ts = datetime.fromisoformat(phase_items[1][-1][0])  # Last ts of phase 1 (assume isoformat)
+
+        # For ph=2 to num_phases
+        for ph in range(2, num_phases + 1):
+            if ph not in phase_items or not phase_items[ph]:
+                # No items: copy previous phase feat
+                sub_features[ph - 1] = sub_features[ph - 2].copy()
+                logging.debug(f"Phase {ph} no items, copied phase {ph-1} feat")
+                continue
+
+            # Check each item in current ph
+            selected_items = []
+            for ts_str, row_dict in phase_items[ph]:
+                curr_ts = datetime.fromisoformat(ts_str)
+                delta = (curr_ts - last_ts).total_seconds()
+                if delta < self.timeout_sec:
+                    selected_items.append((ts_str, row_dict))
+                    last_ts = curr_ts  # Update last_ts to this item
+                else:
+                    logging.debug(f"Item in phase {ph} ts={ts_str} timeout delta={delta} > {self.timeout_sec}, stopping check")
+                    break  # Since sorted, later items larger delta
+
+            if selected_items:
+                # Aggregate selected
+                sub_features[ph - 1] = self._aggregate_phase_feats(selected_items)
+                logging.debug(f"Phase {ph} selected {len(selected_items)} items, aggregated")
+            else:
+                # No valid: copy previous
+                sub_features[ph - 1] = sub_features[ph - 2].copy()
+                logging.debug(f"Phase {ph} no valid items after timeout check, copied phase {ph-1} feat")
+
+        return sub_features
+
+    def _aggregate_phase_feats(self, items: List[Tuple[str, Dict]]) -> Dict:
+        """
+        Aggregate multiple row_dict in a phase to single feat dict (sum/avg/max rules).
+        :param items: [(ts, row_dict), ...]
+        :return: Aggregated dict
+        """
+        if not items:
+            return {}
+
+        aggregated = {}
+        for feat in items[0][1]:  # Assume all have same keys
+            values = [item[1][feat] for item in items]
+            if 'Total' in feat or 'Count' in feat or 'Length' in feat:
+                aggregated[feat] = sum(values)  # Sum for counts/lengths
+            elif 'Max' in feat or 'Duration' in feat:
+                aggregated[feat] = max(values)  # Max for maxes/durations
+            elif 'Min' in feat:
+                aggregated[feat] = min(values)  # Min for mins
+            else:
+                aggregated[feat] = sum(values) / len(values)  # Avg for means/stds
+        return aggregated
 
     def _load_phase_csvs(self, phase_num: int, input_dir: str) -> List[Tuple[pd.DataFrame, str]]:
         """
@@ -204,6 +243,6 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     if args.run:
-        config = {'concat': {'max_workers': 8, 'mask_features': ['Flow ID']}}  # Example config
+        config = {'concat': {'max_workers': 8, 'mask_features': ['Flow ID', 'Label']}}  # Example config
         concatenator = FeatureConcatenator(config)
         concatenator.concatenate_features(args.dataset_dir, args.num_phases, store=True)
