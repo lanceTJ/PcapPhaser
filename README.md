@@ -119,6 +119,26 @@ python main_pipeline.py --config configs/example_4phase.json --run
 7. `FeatureConcatenator` → concatenate phase CSVs → final p×80 feature table
 8. `AutoLabeler` / `Exporter` → labeling and dataset export
 
+# Possible Issues
+
+## CFM Generation Issues
+
+The timestamps generated in the CSV files produced by CFM may have problems, which can further cause issues during labeling. The problems and their solutions are as follows:
+
+1. Timezone recognition issue in timestamps
+
+   How to detect:  
+   This issue can be detected by comparing the start and end times of the original pcap file with those in the CSV files under cfm_feature.  
+   If both the start and end times differ by exactly N hours, it indicates the presence of this issue.
+
+   Solution:  
+   Enable timezone recognition in Autolabler to resolve this issue.
+
+2. AM/PM distinction issue in timestamps
+
+   How to detect:  
+   Similarly, compare the time information in the original pcap file with that in the CSV files under cfm_feature.
+
 Each module is completely independent and supports individual execution + `.writing` integrity flags.
 
 ## Module Description
