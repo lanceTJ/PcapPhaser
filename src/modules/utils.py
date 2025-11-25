@@ -46,5 +46,7 @@ def load_config(config_path='config.ini'):
             'max_workers': config['label'].getint('max_workers', 8),
             'mask_features': [mf.strip() for mf in mask_features_label_str.split(',')],
             'rules_file': config['label'].get('rules_file', '../rules_file/cic_improved_2018_rules.yaml'),
+            'time_zone_adjustment': config['label'].getboolean('time_zone_adjustment', False),
+            'time_format': config['label'].get('time_format', '%d/%m/%Y %I:%M:%S %p'),
         }
     }

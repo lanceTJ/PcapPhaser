@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, Tuple
 from collections import defaultdict
 import yaml
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import re
 
 class AutoLabeler:
@@ -24,11 +24,15 @@ class AutoLabeler:
         self.mask_features = config.get('label', {}).get('mask_features', []) if config else []
         self.rules_file = config.get('label', {}).get('rules_file', 'cic_improved_2018_rules.yaml') if config else 'cic_improved_2018_rules.yaml'
         self.max_workers = config.get('label', {}).get('max_workers', max(4, os.cpu_count() or 4)) if config else max(4, os.cpu_count() or 4)
+        self.time_zone_adjustment = config.get('label', {}).get('time_zone_adjustment', False) if config else False
+        self.time_format = config.get('label', {}).get('time_format', '%d/%m/%Y %I:%M:%S %p') if config else '%d/%m/%Y %I:%M:%S %p'
         self.rules = self._load_rules()
-        self.local_offset = datetime.now() - datetime.utcnow()
+        self.local_offset = datetime.now() - datetime.now(timezone.utc)
         self.local_offset -= timedelta(microseconds=self.local_offset.microseconds)
-        self._convert_rules_times_to_local()
-        self.time_format = '%d/%m/%Y %I:%M:%S %p'  # Timestamp format from CICFlowMeter
+        if self.time_zone_adjustment:
+            logging.info(f"[AutoLabeler] Adjusting rule times to local timezone with offset {self.local_offset}.")
+            self._convert_rules_times_to_local()
+        
     
     def _convert_rules_times_to_local(self):
         """
@@ -319,6 +323,6 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     if args.run:
-        config = {'label': {'max_workers': 8, 'mask_features': ['Flow ID'], 'rules_file': '/home/lance/PcapPhaser/workspace/test/label_rules/cic_improved_2018_rule.yaml'}}  # Example config
+        config = {'label': {'max_workers': 8, 'mask_features': ['Flow ID'], 'rules_file': '/home/lance/PcapPhaser/workspace/test/label_rules/cic_improved_2018_rule.yaml', 'time_zone_adjustment': False}}  # Example config
         labeler = AutoLabeler(config)
         labeler.label_features(args.dataset_dir, args.num_phases, store=True)
