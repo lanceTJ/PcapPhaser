@@ -62,8 +62,10 @@ class SingleFeatureMatrixBuilder:
             if isinstance(allowed_names, str):
                 allowed_names = [ft.strip() for ft in allowed_names.split(',')]
             self.allowed_feature_names = allowed_names
-            lambda_dict_str = config.get('pss', {}).get('lambda_dict', str(D_lambda_dict))
-            self.lambda_dict = ast.literal_eval(lambda_dict_str)
+            lambda_dict = config.get('pss', {}).get('lambda_dict', D_lambda_dict)
+            if isinstance(lambda_dict, str):
+                lambda_dict = ast.literal_eval(lambda_dict)
+            self.lambda_dict = lambda_dict
             max_flow_length_str = config.get('pss', {}).get('max_flow_length', '1000')
             self.max_flow_length = int(max_flow_length_str)
         else:
