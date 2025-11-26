@@ -48,10 +48,10 @@ class FeatureConcatenator:
             tasks.append((ph, input_dir))
 
         if not tasks:
-            print(f"No phase features found under {cfm_features_root}")
+            logging.info(f"No phase features found under {cfm_features_root}")
             return {}
 
-        print(f"Starting feature concatenation from {len(tasks)} phase directories using {self.max_workers} workers")
+        logging.info(f"Starting feature concatenation from {len(tasks)} phase directories using {self.max_workers} workers")
 
         # Load all phase data in parallel: {ph: List[Tuple[pd.DataFrame, pcap_basename]]}
         phase_data = {}  # {ph: List[Tuple[pd.DataFrame, str]]}
@@ -76,7 +76,7 @@ class FeatureConcatenator:
                 pcap_groups[basename][ph] = df
 
         if not pcap_groups:
-            print("No pcap groups found after loading")
+            logging.info("No pcap groups found after loading")
             return {}
 
         # Process each pcap_group independently
@@ -112,6 +112,10 @@ class FeatureConcatenator:
                 ph_ts_dict = {ph: [item[0] for item in phase_items[ph]] for ph in phase_items}
                 logging.debug(f"Flow key={key}, per-phase timestamps: {ph_ts_dict}")
 
+                if 1 not in phase_items:
+                    logging.warning(f'Flow: {key}, has no phase_1 data, skipping')
+                    continue
+                
                 # Aggregate subflows by phase
                 sub_features = self._aggregate_subflows_by_phase(phase_items, num_phases)
 
@@ -134,20 +138,20 @@ class FeatureConcatenator:
             if store:
                 writing_flag = output_csv_path + '.writing'
                 if os.path.exists(writing_flag):
-                    print(f"Already processing or failed for {basename}, skipping save")
+                    logging.info(f"Already processing or failed for {basename}, skipping save")
                     continue
                 open(writing_flag, 'w').close()
                 try:
                     result_df.to_csv(output_csv_path, index=False)
-                    print(f"Concatenated features for {basename} saved to {output_csv_path}")
+                    logging.info(f"Concatenated features for {basename} saved to {output_csv_path}")
                     results[basename] = output_csv_path
                 except Exception as e:
-                    print(f"Exception during save for {basename}: {e}")
+                    logging.info(f"Exception during save for {basename}: {e}")
                 finally:
                     if os.path.exists(writing_flag):
                         os.remove(writing_flag)
             else:
-                print(f"Dry-run completed for {basename}, no file saved")
+                logging.info(f"Dry-run completed for {basename}, no file saved")
 
         return results
 
@@ -240,7 +244,7 @@ class FeatureConcatenator:
                 dfs_with_basenames.append((df, basename))
             except Exception as e:
                 logging.warning(f"Failed to load {csv_file}: {e}")
-        print(f"[Phase {phase_num}] Loaded {len(dfs_with_basenames)} CSV files")
+        logging.debug(f"[Phase {phase_num}] Loaded {len(dfs_with_basenames)} CSV files")
         return dfs_with_basenames
 
 if __name__ == '__main__':
