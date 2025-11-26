@@ -28,11 +28,11 @@ class FeatureConcatenator:
                              num_phases: int,
                              store: bool = True) -> Dict[str, str]:
         """
-        Concatenate features from all phase CSVs under a specific phase experiment directory, grouped by original pcap basename.
+        Scan and concatenate all phase CSVs under cfm_features/phase_*, grouped by all original pcap basenames automatically.
         :param phase_base_dir: Path like 'datasets/feature_set_1/4_phase'
         :param num_phases: Number of phases
         :param store: Whether to save the concatenated CSVs (False for dry-run)
-        :return: Dict {pcap_basename: output_csv_path}
+        :return: Dict {pcap_basename: output_csv_path} for all basenames
         """
         cfm_features_root = os.path.join(phase_base_dir, 'cfm_features')
         concat_output_root = os.path.join(phase_base_dir, 'concat_csv')
@@ -48,10 +48,10 @@ class FeatureConcatenator:
             tasks.append((ph, input_dir))
 
         if not tasks:
-            logging.info(f"No phase features found under {cfm_features_root}")
+            print(f"No phase features found under {cfm_features_root}")
             return {}
 
-        logging.info(f"Starting feature concatenation from {len(tasks)} phase directories using {self.max_workers} workers")
+        print(f"Starting feature concatenation from {len(tasks)} phase directories using {self.max_workers} workers")
 
         # Load all phase data in parallel: {ph: List[Tuple[pd.DataFrame, pcap_basename]]}
         phase_data = {}  # {ph: List[Tuple[pd.DataFrame, str]]}
@@ -76,58 +76,13 @@ class FeatureConcatenator:
                 pcap_groups[basename][ph] = df
 
         if not pcap_groups:
-            logging.info("No pcap groups found after loading")
+            print("No pcap groups found after loading")
             return {}
 
         # Process each pcap_group independently
         results = {}
         for basename, phase_dfs in pcap_groups.items():
-            # Local grouped for this pcap: {key: {ph: [(ts, row_dict), ...]}}
-            grouped = defaultdict(lambda: defaultdict(list))
-
-            for ph in range(1, num_phases + 1):
-                df = phase_dfs.get(ph)
-                if df is None:
-                    continue  # Skip missing phases for this pcap
-                for _, row in df.iterrows():
-                    src_ip = row['Src IP']
-                    dst_ip = row['Dst IP']
-                    src_port = row['Src Port']
-                    dst_port = row['Dst Port']
-                    proto = row['Protocol']
-                    # Normalize key for bidirectional flows: min IP as src, min port as src_port
-                    if src_ip > dst_ip or (src_ip == dst_ip and src_port > dst_port):
-                        key = (dst_ip, src_ip, dst_port, src_port, proto)
-                    else:
-                        key = (src_ip, dst_ip, src_port, dst_port, proto)
-                    ts = row['Timestamp']
-                    row_dict = {col: row[col] for col in feature_columns}
-                    grouped[key][ph].append((ts, row_dict))
-
-            # Process groups to create concatenated rows
-            concatenated_rows = []
-            for key in grouped:
-                phase_items = grouped[key]
-                # Debug log: key and per-ph items without row_dict
-                ph_ts_dict = {ph: [item[0] for item in phase_items[ph]] for ph in phase_items}
-                logging.debug(f"Flow key={key}, per-phase timestamps: {ph_ts_dict}")
-
-                if 1 not in phase_items:
-                    logging.warning(f'Flow: {key}, has no phase_1 data, skipping')
-                    continue
-                
-                # Aggregate subflows by phase
-                sub_features = self._aggregate_subflows_by_phase(phase_items, num_phases)
-
-                # Concatenate into flat dict with suffixed keys
-                flat_row = {'Flow Key': '-'.join(map(str, key))}
-                flat_row['Timestamp'] = min(item[0] for ph_items in phase_items.values() for item in ph_items) if phase_items else ''  # Earliest ts across all
-                for ph in range(1, num_phases + 1):
-                    if sub_features[ph - 1]:
-                        for feat, val in sub_features[ph - 1].items():
-                            flat_row[f"{feat}_p{ph}"] = val
-                concatenated_rows.append(flat_row)
-
+            concatenated_rows = self._process_single_basename(phase_dfs, num_phases, basename)
             if not concatenated_rows:
                 logging.warning(f"No features to concatenate for pcap {basename}")
                 continue
@@ -138,22 +93,132 @@ class FeatureConcatenator:
             if store:
                 writing_flag = output_csv_path + '.writing'
                 if os.path.exists(writing_flag):
-                    logging.info(f"Already processing or failed for {basename}, skipping save")
+                    print(f"Already processing or failed for {basename}, skipping save")
                     continue
                 open(writing_flag, 'w').close()
                 try:
                     result_df.to_csv(output_csv_path, index=False)
-                    logging.info(f"Concatenated features for {basename} saved to {output_csv_path}")
+                    print(f"Concatenated features for {basename} saved to {output_csv_path}")
                     results[basename] = output_csv_path
                 except Exception as e:
-                    logging.info(f"Exception during save for {basename}: {e}")
+                    print(f"Exception during save for {basename}: {e}")
                 finally:
                     if os.path.exists(writing_flag):
                         os.remove(writing_flag)
             else:
-                logging.info(f"Dry-run completed for {basename}, no file saved")
+                print(f"Dry-run completed for {basename}, no file saved")
 
         return results
+
+    def concatenate_single_basename(self,
+                                    phase_base_dir: str,
+                                    num_phases: int,
+                                    basename: str,
+                                    store: bool = True) -> str:
+        """
+        Concatenate features for a specific basename across all phase CSVs.
+        :param phase_base_dir: Path like 'datasets/feature_set_1/4_phase'
+        :param num_phases: Number of phases
+        :param basename: Specific pcap basename to process (e.g., 'attack_2025-11-01')
+        :param store: Whether to save the concatenated CSV (False for dry-run)
+        :return: output_csv_path or None if no data
+        """
+        cfm_features_root = os.path.join(phase_base_dir, 'cfm_features')
+        concat_output_root = os.path.join(phase_base_dir, 'concat_csv')
+        if store:
+            os.makedirs(concat_output_root, exist_ok=True)
+
+        phase_dfs = {}  # {ph: df or None}
+        for ph in range(1, num_phases + 1):
+            csv_path = os.path.join(cfm_features_root, f'phase_{ph}', f'p_{ph}_{basename}.csv')
+            if not os.path.exists(csv_path):
+                logging.warning(f"CSV for phase {ph} basename {basename} not exists: {csv_path}")
+                continue
+            try:
+                df = pd.read_csv(csv_path)
+                phase_dfs[ph] = df
+            except Exception as e:
+                logging.warning(f"Failed to load {csv_path}: {e}")
+
+        if not phase_dfs:
+            logging.warning(f"No CSVs found for basename {basename}")
+            return None
+
+        concatenated_rows = self._process_single_basename(phase_dfs, num_phases, basename)
+        if not concatenated_rows:
+            logging.warning(f"No features to concatenate for basename {basename}")
+            return None
+
+        result_df = pd.DataFrame(concatenated_rows)
+        output_csv_path = os.path.join(concat_output_root, f"{basename}_concat.csv")
+
+        if store:
+            writing_flag = output_csv_path + '.writing'
+            if os.path.exists(writing_flag):
+                print(f"Already processing or failed for {basename}, skipping save")
+                return None
+            open(writing_flag, 'w').close()
+            try:
+                result_df.to_csv(output_csv_path, index=False)
+                print(f"Concatenated features for {basename} saved to {output_csv_path}")
+                return output_csv_path
+            except Exception as e:
+                print(f"Exception during save for {basename}: {e}")
+                return None
+            finally:
+                if os.path.exists(writing_flag):
+                    os.remove(writing_flag)
+        else:
+            print(f"Dry-run completed for {basename}, no file saved")
+            return None
+
+    def _process_single_basename(self, phase_dfs: Dict[int, pd.DataFrame], num_phases: int, basename: str) -> List[Dict]:
+        """
+        Internal method to process aggregation for a single basename's phase_dfs.
+        :param phase_dfs: {ph: df}
+        :param num_phases: Number of phases
+        :param basename: For logging
+        :return: List of flat_row dicts
+        """
+        # Local grouped for this pcap: {key: {ph: [(ts, row_dict), ...]}}
+        grouped = defaultdict(lambda: defaultdict(list))
+        id_columns = ['Src IP', 'Dst IP', 'Src Port', 'Dst Port', 'Protocol', 'Timestamp']
+        feature_columns = [col for col in phase_dfs[list(phase_dfs.keys())[0]].columns if col not in id_columns + self.mask_features] if phase_dfs else []
+
+        for ph in range(1, num_phases + 1):
+            df = phase_dfs.get(ph)
+            if df is None:
+                continue
+            for _, row in df.iterrows():
+                key = (row['Src IP'], row['Dst IP'], row['Src Port'], row['Dst Port'], row['Protocol'])
+                ts = row['Timestamp']
+                row_dict = {col: row[col] for col in feature_columns}
+                grouped[key][ph].append((ts, row_dict))
+
+        # Process groups to create concatenated rows
+        concatenated_rows = []
+        for key in grouped:
+            phase_items = grouped[key]
+            # Debug log: key and per-ph items without row_dict
+            ph_ts_dict = {ph: [item[0] for item in phase_items[ph]] for ph in phase_items}
+            logging.debug(f"Flow key={key}, per-phase timestamps: {ph_ts_dict}")
+
+            # Aggregate subflows by phase
+            sub_features = self._aggregate_subflows_by_phase(phase_items, num_phases)
+
+            if sub_features is None:
+                continue
+
+            # Concatenate into flat dict with suffixed keys
+            flat_row = {'Flow Key': '-'.join(map(str, key))}
+            flat_row['Timestamp'] = min(item[0] for ph_items in phase_items.values() for item in ph_items) if phase_items else ''  # Earliest ts across all
+            for ph in range(1, num_phases + 1):
+                if sub_features[ph - 1]:
+                    for feat, val in sub_features[ph - 1].items():
+                        flat_row[f"{feat}_p{ph}"] = val
+            concatenated_rows.append(flat_row)
+
+        return concatenated_rows
 
     def _aggregate_subflows_by_phase(self, phase_items: Dict[int, List[Tuple[str, Dict]]], num_phases: int) -> List[Dict]:
         """
@@ -165,7 +230,7 @@ class FeatureConcatenator:
         sub_features = [{} for _ in range(num_phases)]  # Init empty dict per phase
         if 1 not in phase_items or not phase_items[1]:
             logging.debug("No phase 1 items, skipping aggregation")
-            return sub_features  # Empty if no phase 1
+            return None  # Empty if no phase 1
 
         # Sort per phase (ensure, though already in loop)
         for ph in phase_items:
@@ -244,7 +309,7 @@ class FeatureConcatenator:
                 dfs_with_basenames.append((df, basename))
             except Exception as e:
                 logging.warning(f"Failed to load {csv_file}: {e}")
-        logging.debug(f"[Phase {phase_num}] Loaded {len(dfs_with_basenames)} CSV files")
+        print(f"[Phase {phase_num}] Loaded {len(dfs_with_basenames)} CSV files")
         return dfs_with_basenames
 
 if __name__ == '__main__':
@@ -252,10 +317,14 @@ if __name__ == '__main__':
     parser.add_argument('-d', '--dataset_dir', type=str, required=True,
                         help='Full path to phase dataset dir, e.g., datasets/feature_set_1/4_phase')
     parser.add_argument('--num_phases', type=int, required=True, help='Number of phases')
+    parser.add_argument('--base_name', type=str, required=False, help='Specifically the name of csv which need concat, but remove prefix "p_n_" and suffix ".csv"')
     parser.add_argument('--run', action='store_true', help='Execute concatenation now')
 
     args = parser.parse_args()
     if args.run:
         config = {'concat': {'max_workers': 8, 'mask_features': ['Flow ID', 'Label']}}  # Example config
         concatenator = FeatureConcatenator(config)
-        concatenator.concatenate_features(args.dataset_dir, args.num_phases, store=True)
+        if not args.base_name:
+            concatenator.concatenate_features(args.dataset_dir, args.num_phases, store=True)
+        else:
+            concatenator.concatenate_single_basename(args.dataset_dir, args.num_phases, args.base_name, store=True)
