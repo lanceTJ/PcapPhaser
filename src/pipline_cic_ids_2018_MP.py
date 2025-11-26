@@ -138,7 +138,7 @@ def process_pcap(pcap_file, args, config, feature_types, num_phases_list, featur
             if not all(os.path.exists(p) for p in cfm_paths):
                 print(f"[Process {os.getpid()}] Running CFMRunner for {num_phases} phases on {pcap_basename}.")
                 runner = CFMRunner(config)
-                runner.run_cfm_on_phased_pcaps(phase_base_dir, num_phases, store=True)
+                runner.run_cfm_on_single_basename(phase_base_dir, num_phases, phased_pcap_basename, store=True)
             else:
                 print(f"[Process {os.getpid()}] CFM features found for {num_phases} phases on {pcap_basename}. Skipping CFM run.")
 
@@ -149,7 +149,8 @@ def process_pcap(pcap_file, args, config, feature_types, num_phases_list, featur
             if not os.path.exists(concat_path):
                 print(f"[Process {os.getpid()}] Running FeatureConcatenator for {num_phases} phases on {pcap_basename}.")
                 concatenator = FeatureConcatenator(config)
-                concatenator.concatenate_features(phase_base_dir, num_phases, store=True)
+                # concatenator.concatenate_features(phase_base_dir, num_phases, store=True)
+                concatenator.concatenate_single_basename(phase_base_dir, num_phases, f'{phased_pcap_basename}_Flow', store=True)
             else:
                 print(f"[Process {os.getpid()}] Concatenated features found for {num_phases} phases on {pcap_basename}. Skipping concatenation.")
 
