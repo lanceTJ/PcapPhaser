@@ -57,6 +57,9 @@ fi
 JOB_COUNT=0
 MAX_JOBS=3  # Limit parallel jobs to avoid overload, adjust as needed
 
+# Record start time
+START_TIME=$(date +%s)
+
 for top_dir in "${TOP_DIRS[@]}"; do
     # Get sub-dirs under top_dir, exclude *-flow and logs
     SUB_DIRS=($(ls -d "$INPUT_ROOT/$top_dir"/*/ | sed 's#.*/\([^/]*\)/#\1#g' | grep -v -E '(-flow|logs)$' | sort))
@@ -94,3 +97,8 @@ done
 wait
 
 echo "All processing completed. Logs are in $LOG_DIR"
+
+# Record end time and calculate total execution time
+END_TIME=$(date +%s)
+TOTAL_TIME=$((END_TIME - START_TIME))
+echo "Total execution time: $TOTAL_TIME seconds"
