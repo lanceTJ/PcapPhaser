@@ -1,0 +1,9 @@
+{
+  "mode": "length",
+  "before_packet_count": 9060,
+  "after_packet_count": 9060,
+  "changed_packets_by_length": 78,
+  "before_total_packet_bytes": 1951264,
+  "after_total_packet_bytes": 2013394,
+  "delta_packet_bytes": 62130
+}

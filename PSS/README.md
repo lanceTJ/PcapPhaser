@@ -34,22 +34,14 @@ This artifact supports reproducing:
 
 ---
 
-## Artifact Scope and Limitations
-
-### What This Artifact Provides
+## Artifact Capabilities
 
 - Full implementation of the **PSS-based traffic phase segmentation pipeline**
 - End-to-end dataset generation from **PCAP → phased PCAP → CSV features**
 - **Deterministic phase boundary reproduction** given identical inputs and configurations
 - Configuration files aligned with those used in the paper
-
-### What This Artifact Does NOT Include
-
-- Original proprietary or restricted PCAP datasets used in the paper
-- Trained downstream machine learning models
-- Large-scale experiments requiring extensive computational resources
-
-To enable evaluation, users may supply their own PCAP data or small public samples.
+- Compact public benign and malicious DoHBrw captures for direct evaluation
+- PGCL-ready labeled phase-feature export for downstream model training
 
 ---
 
@@ -67,9 +59,9 @@ datasets/
     │   │   └── ...
     │   ├── phase_marks.json      # PhaseDivider output
     │   ├── fused_matrix.npz      # FeatureFusion output
-    │   └── config.json           # Full experiment configuration
+    │   └── config.ini            # Full experiment configuration
     └── 4_phase/                  # Independent experiment (num_phases = 4)
-````
+```
 
 Each experiment directory is **self-contained** and fully reproducible.
 
@@ -97,8 +89,8 @@ Each experiment directory is **self-contained** and fully reproducible.
 ### Setup
 
 ```bash
-git clone https://github.com/lanceTJ/PcapPhaser.git
-cd PcapPhaser/PSS
+git clone <anonymous-artifact-url> FlowPhaser
+cd FlowPhaser/PSS
 pip install -r requirements.txt
 ```
 
@@ -132,8 +124,13 @@ After successful compilation, `CFMRunner.py` can be used without additional conf
 # Compile CICFlowMeter (only once)
 bash third_party/cicflowmeter/build_cicflowmeter_with_runtime_bundle.sh
 
-# Run an example experiment (3 phases)
-python src/labeled_by_file_name_pipeline.py --config configs/config.ini --run
+# Run the included DoHBrw demonstration captures (3 phases)
+python src/labeled_by_file_name_pipeline.py \
+  --config configs/demo.ini \
+  --input_dir ../PcapPerturbator/demo_inputs/demo \
+  --output_dir ../artifact_outputs/pss \
+  --dataset dohbrw-demo \
+  --run
 ```
 
 Run the flow-key and extraction regression tests with:
@@ -144,12 +141,17 @@ python -m unittest discover -s tests -v
 
 ### Expected Outputs
 
-After successful execution, the following artifacts will be generated:
+After successful execution, the following artifacts are generated below
+`../artifact_outputs/pss/dohbrw-demo/3_phase/`:
 
-* `phase_marks.json` — phase boundary results
-* `phased_pcap/` — reconstructed per-phase PCAP files
-* `cfm_features/` — per-phase flow-level CSV features
-* Final concatenated phase-level feature tables
+* `phase_marks/*_phase_marks.json` — phase boundary results
+* `phased_pcap/phase_*/` — reconstructed per-phase PCAP files
+* `cfm_features/phase_*/` — per-phase flow-level CSV features
+* `concat_csv/` — concatenated phase feature tables
+* `labeled_csv/*_Flow_labeled.csv` — PGCL-ready labeled tables
+
+The resolved experiment configuration is stored at
+`../artifact_outputs/pss/dohbrw-demo/config.ini`.
 
 These outputs correspond to the dataset generation process described in the paper.
 
@@ -168,7 +170,7 @@ These outputs correspond to the dataset generation process described in the pape
 
 ---
 
-## Known Issues
+## Compatibility Notes
 
 ### CICFlowMeter Timestamp Issues
 

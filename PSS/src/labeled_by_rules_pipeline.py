@@ -7,6 +7,8 @@ import json
 import multiprocessing
 import time
 import copy
+import traceback
+from pathlib import Path
 
 # Import all module classes
 from modules.FeatureExtractor import FeatureExtractor
@@ -166,6 +168,8 @@ def process_pcap(pcap_file, args, config, feature_types, num_phases_list, featur
         print(f"[Process {os.getpid()}] Completed processing for {pcap_basename}.")
     except Exception as e:
         print(f"[Process {os.getpid()}] Error processing {pcap_file}: {e}")
+        traceback.print_exc()
+        raise
 
 def main():
     parser = argparse.ArgumentParser(description='Full pipeline for generating phased datasets from PCAP files using PSS modules.')
@@ -182,6 +186,11 @@ def main():
 
     # Load unified config
     config = load_config(args.config)  # Returns dict from utils.py
+    rules_file = config.get("label", {}).get("rules_file")
+    if rules_file and not os.path.isabs(rules_file):
+        config["label"]["rules_file"] = str(
+            (Path(args.config).resolve().parent / rules_file).resolve()
+        )
     print(f"[PipeLine] Configuration loaded: {config}")
     # Clean incomplete files before starting
     clean_incomplete_files(args.output_dir)
@@ -234,14 +243,28 @@ def main():
     for pcap_file in pcap_files:
         # Submit task asynchronously, pass pcap_dir as additional arg
         result = pool.apply_async(process_pcap, args=(pcap_file, args, config, feature_types, num_phases_list, feature_matrix_dir, dataset_dir, pcap_dir))
-        results.append(result)
+        results.append((pcap_file, result))
 
-    # Wait for all processes to complete
-    for result in results:
-        result.wait()
+    failed_pcaps = []
+    try:
+        for pcap_file, result in results:
+            try:
+                result.get()
+            except Exception:
+                failed_pcaps.append(pcap_file)
+                print(
+                    f"[PipeLine] Worker crashed on {pcap_file}:\n"
+                    f"{traceback.format_exc()}"
+                )
+    finally:
+        pool.close()
+        pool.join()
 
-    pool.close()
-    pool.join()
+    if failed_pcaps:
+        raise RuntimeError(
+            "PSS rule-labeling pipeline failed for: "
+            + ", ".join(failed_pcaps)
+        )
 
     print(f"[PipeLine] Pipeline completed for {args.input_dir} under {dataset_dir}.")
 

@@ -147,9 +147,19 @@ def run_bridge(config: dict[str, Any]) -> dict[str, Any]:
         manipulator.change_particle_params(**(config.get("particle_params") or {}))
         manipulator.change_pso_params(**(config.get("pso_params") or {}))
         manipulator.change_manipulator_params(**(config.get("manipulator_params") or {}))
+        configured_limit = config.get("packet_limit")
+        available_packets = len(manipulator.pktList)
+        packet_limit = (
+            available_packets
+            if configured_limit is None
+            else min(int(configured_limit), available_packets)
+        )
+        if packet_limit <= 0:
+            raise ValueError("packet_limit must be positive")
+        manipulator.grp_size = min(int(manipulator.grp_size), packet_limit)
         manipulator.process(
             config["stats_pkl"],
-            limit=np.inf,
+            limit=packet_limit,
             heuristic=bool(config.get("heuristic", False)),
         )
 
@@ -165,6 +175,7 @@ def run_bridge(config: dict[str, Any]) -> dict[str, Any]:
         wrpcap(config["output_pcap"], flat_packets)
 
         manifest = _build_manifest(x_list, pkt_list_list, str(config.get("mode", "unknown")))
+        manifest["processed_packet_count"] = len(manifest["entries"])
         Path(config["manifest_json"]).write_text(json.dumps(manifest, indent=2), encoding="utf-8")
         return manifest
     finally:

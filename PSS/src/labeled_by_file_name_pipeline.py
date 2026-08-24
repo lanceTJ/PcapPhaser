@@ -427,6 +427,9 @@ def main():
         print("[PipeLine] Failed PCAP list:")
         for f in failed_pcaps:
             print(f"  - {f}")
+        raise RuntimeError(
+            f"PSS pipeline failed for {failed} of {len(pcap_files)} PCAP files"
+        )
 
 if __name__ == "__main__":
     start_time = time.time()

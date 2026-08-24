@@ -9,7 +9,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Iterable
 
-from scapy.all import Ether, IP, IPv6, Raw, TCP, UDP
+from scapy.all import CookedLinux, Ether, IP, IPv6, Raw, TCP, UDP
 
 from .io import PcapSinkBuffered
 from .stream import _sniff_kind, stream_pcap_packets
@@ -66,9 +66,14 @@ def _normalize_time(ts_sec: int, ts_usec: int) -> tuple[int, int]:
 
 
 
-def _flow_keys(pkt_bytes: bytes) -> tuple[str, str]:
+def _flow_keys(pkt_bytes: bytes, linktype: int) -> tuple[str, str]:
     try:
-        pkt = Ether(pkt_bytes)
+        if linktype == 113:
+            pkt = CookedLinux(pkt_bytes)
+        elif linktype == 101:
+            pkt = IPv6(pkt_bytes) if pkt_bytes and pkt_bytes[0] >> 4 == 6 else IP(pkt_bytes)
+        else:
+            pkt = Ether(pkt_bytes)
     except Exception:
         digest = hashlib.blake2b(pkt_bytes[:64], digest_size=8).hexdigest()
         return f"opaque:{digest}", f"opaque:{digest}"
@@ -113,7 +118,7 @@ def load_packet_records(pcap_path: str) -> tuple[list[PacketRecord], int]:
 
     records: list[PacketRecord] = []
     for ordinal, (pkt_bytes, ts_sec, ts_usec) in enumerate(stream_pcap_packets(pcap_path)):
-        flow_id, direction_id = _flow_keys(pkt_bytes)
+        flow_id, direction_id = _flow_keys(pkt_bytes, linktype)
         records.append(
             PacketRecord(
                 ordinal=ordinal,
@@ -241,6 +246,7 @@ def apply_length_manip_stage(
             "manifest_json": str(tm_manifest_path),
             "mode": "length",
             "stage_seed": stage_seed,
+            "packet_limit": params.get("packet_limit"),
             "heuristic": bool(params.get("heuristic", False)),
             "particle_params": params.get("particle", {}),
             "pso_params": params.get("pso", {}),
@@ -311,6 +317,8 @@ def apply_length_manip_stage(
     return {
         "type": "length_manip",
         "stage_seed": stage_seed,
+        "total_in": len(original_records),
+        "total_out": len(mutated_records),
         "tm": {
             "mutated_pcap": str(tm_mutated_pcap),
             "statistics_pkl": str(tm_stats_path),
@@ -379,8 +387,17 @@ def apply_rate_manip_stage(
 
     select_mode = str(params.get("select", {}).get("mode", "flow_uniform")).lower()
     selected_flows = _weighted_flow_subset(flow_counts, float(stage.get("pct", 0.0)), select_mode, stage_seed)
-    selected_records = [record for record in original_records if record.flow_id in selected_flows]
-    passthrough_records = [record for record in original_records if record.flow_id not in selected_flows]
+    selected_flow_records = [record for record in original_records if record.flow_id in selected_flows]
+    configured_limit = params.get("packet_limit")
+    if configured_limit is None:
+        selected_records = selected_flow_records
+    else:
+        packet_limit = int(configured_limit)
+        if packet_limit <= 0:
+            raise ValueError("packet_limit must be positive")
+        selected_records = selected_flow_records[:packet_limit]
+    selected_ordinals = {record.ordinal for record in selected_records}
+    passthrough_records = [record for record in original_records if record.ordinal not in selected_ordinals]
 
     split_selected_pcap = work_dir / "selected_input.pcap"
     tm_mutated_pcap = work_dir / "selected_tm_mutated.pcap"
@@ -417,7 +434,7 @@ def apply_rate_manip_stage(
         if len(mutated_selected_records) != len(selected_records):
             raise RuntimeError(
                 "TrafficManipulator rate stage changed packet count. "
-                "Expected a time-only mutation with max_cft_pkt=0."
+                "Expected a time-only mutation with crafted-packet probability zero."
             )
     else:
         mutated_selected_records = []
@@ -450,11 +467,14 @@ def apply_rate_manip_stage(
     )
     verify["metrics"]["selected_flow_count"] = len(selected_flows)
     verify["metrics"]["selected_packet_count"] = len(selected_records)
+    verify["metrics"]["selected_flow_packet_count"] = len(selected_flow_records)
     verify["metrics"]["selection_mode"] = select_mode
 
     return {
         "type": "rate_manip",
         "stage_seed": stage_seed,
+        "total_in": len(original_records),
+        "total_out": len(merged_records),
         "tm": {
             "selected_input_pcap": str(split_selected_pcap),
             "mutated_pcap": str(tm_mutated_pcap),

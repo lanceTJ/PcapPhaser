@@ -23,9 +23,10 @@
         "grp_size": 100,
         "min_time_extend": 2.0,
         "max_time_extend": 4.0,
-        "max_cft_pkt": 0,
+        "max_cft_pkt": 1,
         "max_crafted_pkt_prob": 0.0
       },
+      "packet_limit": 1000,
       "select": {
         "mode": "flow_uniform"
       },

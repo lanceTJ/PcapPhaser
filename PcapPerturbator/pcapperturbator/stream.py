@@ -29,15 +29,23 @@ def stream_pcap_packets(pcap_path: str) -> Iterator[Tuple[bytes, int, int]]:
     """Yield (pkt_bytes, ts_sec, ts_usec) for PCAP and PCAPNG."""
     kind = _sniff_kind(pcap_path)
     if kind == "pcap":
-        for pkt_bytes, meta in RawPcapReader(pcap_path):
-            yield pkt_bytes, int(meta.sec), int(meta.usec)
+        reader = RawPcapReader(pcap_path)
+        try:
+            for pkt_bytes, meta in reader:
+                yield pkt_bytes, int(meta.sec), int(meta.usec)
+        finally:
+            reader.close()
         return
 
-    for pkt in PcapNgReader(pcap_path):
-        timestamp = float(getattr(pkt, "time", 0.0))
-        ts_sec = int(timestamp)
-        ts_usec = int((timestamp - ts_sec) * 1_000_000)
-        yield bytes(pkt.original), ts_sec, ts_usec
+    reader = PcapNgReader(pcap_path)
+    try:
+        for pkt in reader:
+            timestamp = float(getattr(pkt, "time", 0.0))
+            ts_sec = int(timestamp)
+            ts_usec = int((timestamp - ts_sec) * 1_000_000)
+            yield bytes(pkt.original), ts_sec, ts_usec
+    finally:
+        reader.close()
 
 
 

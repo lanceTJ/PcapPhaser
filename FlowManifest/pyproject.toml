@@ -56,11 +56,6 @@ dev = [
 [project.scripts]
 flowmanifest = "FlowManifest.cli:main"
 
-[project.urls]
-Homepage = "https://github.com/lanceTJ/PcapPhaser"
-Documentation = "https://github.com/lanceTJ/PcapPhaser/tree/master/FlowManifest"
-Repository = "https://github.com/lanceTJ/PcapPhaser"
-
 [tool.setuptools.packages.find]
 where = ["src"]
 

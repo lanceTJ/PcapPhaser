@@ -25,6 +25,7 @@
         "max_cft_pkt": 1,
         "max_crafted_pkt_prob": 0.1
       },
+      "packet_limit": 1000,
       "budget_basis": "packet_len",
       "cap_bytes": 2048,
       "spill_mode": "forward",

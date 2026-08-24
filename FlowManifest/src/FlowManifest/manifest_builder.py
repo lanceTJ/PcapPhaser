@@ -80,6 +80,8 @@ class ManifestEntry:
     def from_dict(cls, d: Dict[str, Any]) -> "ManifestEntry":
         # Handle optional fields that may be missing
         d = d.copy()
+        if pd.isna(d.get("split")):
+            d["split"] = None
         if "perturbation_applied" not in d:
             d["perturbation_applied"] = True
         if "feature_schema_version" not in d:

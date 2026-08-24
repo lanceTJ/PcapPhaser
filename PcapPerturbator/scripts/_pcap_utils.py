@@ -2,7 +2,7 @@
 from __future__ import annotations
 from typing import Iterator, Tuple
 import hashlib
-from scapy.all import RawPcapReader, PcapNgReader, Ether, IP, TCP, UDP
+from scapy.all import RawPcapReader, PcapNgReader, PcapReader, IP, TCP, UDP
 
 _PCAP_MAGIC = {b"\xd4\xc3\xb2\xa1", b"\xa1\xb2\xc3\xd4", b"\x4d\x3c\xb2\xa1", b"\xa1\xb2\x3c\x4d"}
 _PCAPNG_MAGIC = b"\x0a\x0d\x0d\x0a"
@@ -19,13 +19,21 @@ def sniff_kind(path: str) -> str:
 def stream_packets(path: str) -> Iterator[Tuple[bytes, float]]:
     kind = sniff_kind(path)
     if kind == "pcap":
-        for pkt_bytes, meta in RawPcapReader(path):
-            ts = float(int(meta.sec)) + float(int(meta.usec)) / 1_000_000.0
-            yield bytes(pkt_bytes), ts
+        reader = RawPcapReader(path)
+        try:
+            for pkt_bytes, meta in reader:
+                ts = float(int(meta.sec)) + float(int(meta.usec)) / 1_000_000.0
+                yield bytes(pkt_bytes), ts
+        finally:
+            reader.close()
     else:
-        for pkt in PcapNgReader(path):
-            ts = float(getattr(pkt, "time", 0.0))
-            yield bytes(pkt.original), ts
+        reader = PcapNgReader(path)
+        try:
+            for pkt in reader:
+                ts = float(getattr(pkt, "time", 0.0))
+                yield bytes(pkt.original), ts
+        finally:
+            reader.close()
 
 def packet_hash(pkt_bytes: bytes) -> str:
     return hashlib.blake2b(pkt_bytes, digest_size=16).hexdigest()
@@ -38,11 +46,7 @@ def pkt_lengths_and_ts(path: str):
         hashes.append(packet_hash(pkt_bytes))
     return lengths, ts_list, hashes
 
-def flow_key_from_bytes(pkt_bytes: bytes):
-    try:
-        pkt = Ether(pkt_bytes)
-    except Exception:
-        return None
+def flow_key_from_packet(pkt):
     if IP not in pkt:
         return None
     src = pkt[IP].src
@@ -60,15 +64,17 @@ def flow_key_from_bytes(pkt_bytes: bytes):
 def flow_iats(path: str):
     last_ts = {}
     values = []
-    for pkt_bytes, ts in stream_packets(path):
-        key = flow_key_from_bytes(pkt_bytes)
-        if key is None:
-            continue
-        if key in last_ts:
-            dt = ts - last_ts[key]
-            if dt >= 0:
-                values.append(dt)
-        last_ts[key] = ts
+    with PcapReader(path) as reader:
+        for pkt in reader:
+            ts = float(pkt.time)
+            key = flow_key_from_packet(pkt)
+            if key is None:
+                continue
+            if key in last_ts:
+                dt = ts - last_ts[key]
+                if dt >= 0:
+                    values.append(dt)
+            last_ts[key] = ts
     return values
 
 def basic_summary(path: str):

@@ -30,7 +30,12 @@ from pgcl.data import (
 )
 from pgcl.model import Encoder, ProjectionHead, DownstreamClassifier
 from pgcl.train import pretrain_pgcl, fine_tune_two_stage, evaluate_downstream_metrics
-from pgcl.utils import save_ckpt_atomic, set_seed
+from pgcl.utils import (
+    save_ckpt_atomic,
+    save_classifier_ckpt_atomic,
+    set_seed,
+    write_json_atomic,
+)
 
 
 def load_train_config(path: str) -> Dict[str, Any]:
@@ -241,13 +246,61 @@ def _run_single_pipeline(
         pcfg=pcfg,
     )
 
-    # Optional test evaluation (external split mode)
+    val_acc, restored_val_f1, val_precision, val_recall = evaluate_downstream_metrics(
+        classifier, val_loader, device
+    )
+    metrics = {
+        "best_val_f1": val_f1,
+        "validation": {
+            "accuracy": val_acc,
+            "macro_f1": restored_val_f1,
+            "macro_precision": val_precision,
+            "macro_recall": val_recall,
+        },
+        "test": None,
+    }
+
+    # Optional test evaluation (external split and final k-fold modes).
     if test_loader is not None:
         print(f"\n{'-'*60}")
         print("Evaluating on held-out test set...")
         print(f"{'-'*60}")
         acc, f1, p, r = evaluate_downstream_metrics(classifier, test_loader, device)
         print(f"Test  Acc: {acc:.4f}  F1: {f1:.4f}  P: {p:.4f}  R: {r:.4f}")
+        metrics["test"] = {
+            "accuracy": acc,
+            "macro_f1": f1,
+            "macro_precision": p,
+            "macro_recall": r,
+        }
+
+    checkpoint_path = Path(ckpt_path)
+    fine_tuned_path = checkpoint_path.with_name(
+        f"{checkpoint_path.stem}_finetuned.safetensors"
+    )
+    metrics_path = checkpoint_path.with_name(
+        f"{checkpoint_path.stem}_metrics.json"
+    )
+    save_classifier_ckpt_atomic(
+        str(fine_tuned_path),
+        model=classifier,
+        feature_cols=feature_cols,
+        feat_scaler=feat_scaler,
+        config={
+            "K": K,
+            "feats_per_phase": feats_per_phase,
+            "encoder_out_dim": encoder_out_dim,
+            "proj_out_dim": proj_out_dim,
+            "dropout": dropout,
+            "pretrain": pcfg,
+            "finetune": ft_cfg,
+        },
+        label_name=label_col,
+        class_to_idx=class_to_idx,
+    )
+    write_json_atomic(str(metrics_path), metrics)
+    print(f"Fine-tuned checkpoint saved to: {fine_tuned_path}")
+    print(f"Evaluation metrics saved to: {metrics_path}")
 
     return val_f1
 

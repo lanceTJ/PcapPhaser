@@ -1,0 +1,5 @@
+-e ./PcapPerturbator
+-e ./FlowManifest
+-r ./PSS/requirements.txt
+-r ./PGCL/requirements.txt
+matplotlib>=3.8

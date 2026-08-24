@@ -63,21 +63,15 @@ This artifact supports:
 - Reproducible few-shot support set generation
 - Leakage validation for research artifacts
 
-## Artifact Scope and Limitations
-
-### What This Artifact Provides
+## Artifact Capabilities
 
 - Complete implementation of the core **manifest, split, support-set, and leakage-checking pipeline**
 - Deterministic data splitting with fixed seeds
 - Built-in leakage detection and validation
 - PyTorch Dataset integration for easy usage
-
-### What This Artifact Does Not Include
-
-- Original proprietary or restricted PCAP datasets
-- Pre-trained models
-- Project-specific runner callbacks that connect `PcapManifestPipeline` to
-  PcapPerturbator and PSS commands
+- Group-aware splitting for origin and all five perturbation variants
+- A deterministic 144-row example with executable CLI commands
+- CSV index views that connect directly to PGCL training inputs
 
 ## Key Design Principles
 
@@ -142,28 +136,37 @@ pip install -e ".[pcap]"  # PCAP integration
 pip install -e ".[all]"   # Both
 ```
 
+Generate a deterministic demonstration manifest template:
+
+```bash
+python examples/generate_tiny_manifest.py \
+  --output ../artifact_outputs/flowmanifest/manifest_template.csv
+```
+
 ```bash
 # Step 1: Initialize manifest from an experiment-specific template
 flowmanifest build \
     --config configs/data_split.yaml \
-    --dataset CIC-IDS-2018 \
-    --template data/processed/CIC-IDS-2018/manifest_template.csv
+    --dataset FlowPhaser-demo \
+    --template ../artifact_outputs/flowmanifest/manifest_template.csv \
+    --output-dir ../artifact_outputs/flowmanifest
 
 # Step 2: Create parent-flow level splits
 flowmanifest split \
-    --manifest data/processed/CIC-IDS-2018/manifest.csv \
+    --manifest ../artifact_outputs/flowmanifest/manifest.csv \
+    --group-aware \
     --seed 42
 
 # Step 3: Create few-shot support sets
 flowmanifest fewshot \
-    --manifest data/processed/CIC-IDS-2018/manifest.csv \
-    --k 50 \
-    --seeds 0 1 2 3 4
+    --manifest ../artifact_outputs/flowmanifest/manifest.csv \
+    --k 2 \
+    --seeds 0 1
 
 # Step 4: Check for data leakage
 flowmanifest check \
-    --manifest data/processed/CIC-IDS-2018/manifest.csv \
-    --indices-dir data/processed/CIC-IDS-2018/indices \
+    --manifest ../artifact_outputs/flowmanifest/manifest.csv \
+    --indices-dir ../artifact_outputs/flowmanifest/indices \
     --strict
 ```
 

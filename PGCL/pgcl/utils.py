@@ -72,3 +72,64 @@ def save_ckpt_atomic(
         tmp_meta = tf.name
         json.dump(meta, tf, ensure_ascii=False, indent=2)
     os.replace(tmp_meta, meta_path)
+
+
+def write_json_atomic(path: str, payload: Dict[str, Any]) -> None:
+    """Atomically write a JSON result file."""
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        dir=output_path.parent,
+        delete=False,
+        suffix=".json",
+        mode="w",
+        encoding="utf-8",
+    ) as handle:
+        temp_path = handle.name
+        json.dump(payload, handle, ensure_ascii=False, indent=2)
+    os.replace(temp_path, output_path)
+
+
+def save_classifier_ckpt_atomic(
+    path: str,
+    model: torch.nn.Module,
+    feature_cols: List[str],
+    feat_scaler,
+    config: Dict[str, Any],
+    label_name: str,
+    class_to_idx: Dict[str, int],
+) -> None:
+    """Save the restored best fine-tuned encoder and classification head."""
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    state_dict = {
+        key: value.detach().cpu()
+        for key, value in model.state_dict().items()
+    }
+
+    with tempfile.NamedTemporaryFile(
+        dir=output_path.parent,
+        delete=False,
+        suffix=".safetensors",
+    ) as handle:
+        temp_path = handle.name
+    try:
+        save_file(state_dict, temp_path)
+        os.replace(temp_path, output_path)
+    finally:
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
+
+    meta = {
+        "checkpoint_type": "fine_tuned_classifier",
+        "feature_cols": list(map(str, feature_cols)),
+        "scaler_mean": feat_scaler.mean_.tolist(),
+        "scaler_scale": feat_scaler.scale_.tolist(),
+        "config": config,
+        "label_name": label_name,
+        "class_to_idx": class_to_idx,
+    }
+    write_json_atomic(str(output_path.with_suffix(".meta.json")), meta)

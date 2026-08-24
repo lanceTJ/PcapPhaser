@@ -366,9 +366,12 @@ def apply_perturbations_plan(
         if Path(current_input).resolve() != Path(out_pcap).resolve():
             shutil.copyfile(current_input, out_pcap)
 
+    def stage_counts(stage_meta: dict) -> tuple[int, int]:
+        result = stage_meta.get("result") or stage_meta
+        return int(result.get("total_in", 0)), int(result.get("total_out", 0))
+
     aggregate = {"total_in": 0, "total_out": 0, "stats": {}, "stages": stages_meta}
-    for stage_meta in stages_meta:
-        result = stage_meta.get("result") or {}
-        aggregate["total_in"] += int(result.get("total_in", 0))
-        aggregate["total_out"] += int(result.get("total_out", 0))
+    if stages_meta:
+        aggregate["total_in"] = stage_counts(stages_meta[0])[0]
+        aggregate["total_out"] = stage_counts(stages_meta[-1])[1]
     return aggregate

@@ -37,6 +37,7 @@ data/
 logs/
 vis/
 demo_assets/
+artifact_outputs/
 
 # Temporary files
 *.tmp

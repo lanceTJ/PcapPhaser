@@ -57,12 +57,14 @@ pcapperturbator/
 
 ### 1. Create a Python environment
 
-The local package requires Python 3.9+, while upstream TrafficManipulator was originally tested on Python 3.6 and depends on `cython`, `scapy`, `numpy`, `scipy`, and `matplotlib`. The safest practical compromise for this integrated project is to use **Python 3.9** in one shared environment: it satisfies this package, and the bridge in `pcapperturbator/tm_bridge.py` patches the legacy `time.clock()` call used by upstream TrafficManipulator. Upstream TrafficManipulator explicitly documents Python 3.6 testing, lists `cython` and `scapy` as special dependencies, and pins `Cython==0.29.11`, `matplotlib==3.0.3`, `numpy==1.18.5`, `scapy==2.4.2`, and `scipy==1.4.1`.
+The local package requires Python 3.9+. The included compatibility setup has
+been validated with Python 3.12; it patches the legacy NumPy, Scapy link-layer,
+and `time.clock()` assumptions needed by upstream TrafficManipulator.
 
 Example setup:
 
 ```bash
-python3.9 -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip setuptools wheel
 ```
@@ -90,9 +92,11 @@ Upstream TrafficManipulator marks `cython` and `scapy` as special dependencies a
 A practical installation sequence is:
 
 ```bash
-sudo apt-get install python3-tk
 pip install cython scapy scipy matplotlib
 ```
+
+The demonstration scripts use Matplotlib's non-interactive `Agg` backend, so a
+desktop session and Tk are not required to generate PNG figures.
 
 If you need stricter compatibility with the original repository, install the pinned versions documented upstream instead. That pin set comes from the upstream README and reflects the environment they reported, not a constraint enforced by this package.
 
@@ -168,7 +172,8 @@ For this integrated framework, the most reliable choice is to create or keep a t
 external/TrafficManipulator/data/empty.pcap
 ```
 
-Do not point `init_pcap` at a missing path. If it is absent, TrafficManipulator fails before the manipulation stage begins.
+Set `init_pcap` to an existing warm-up capture; `quicksetup.sh` generates the
+included demonstration asset automatically.
 
 ## Minimal environment checklist
 
@@ -185,6 +190,42 @@ Before you run `length_manip` or `rate_manip`, verify all of the following:
 If any of these are missing, most failures happen at import time or immediately when TrafficManipulator starts building the feature extractor.
 
 ## Running the toolkit
+
+### Included DoHBrw demonstration
+
+`demo_inputs/demo/` contains compact benign and malicious DoH captures from the
+public CIRA-CIC-DoHBrw-2020 dataset. Provenance, hashes, and the required
+citation are recorded in `demo_inputs/DATASET.md`.
+
+On Linux, the following commands prepare TrafficManipulator and run all five
+demonstrations:
+
+```bash
+sudo apt-get install build-essential python3-dev python3-venv
+bash quicksetup.sh
+bash TM1_loss.sh
+bash TM1_retrans.sh
+bash TM1_reorder.sh
+bash TM2_length.sh
+bash TM2_rate.sh
+```
+
+The TM1 experiments write quantitative JSON reports under `vis/`. The TM2
+experiments additionally write:
+
+* `vis/TM2_length_hist.png` — benign/original/mutated packet-length distributions
+* `vis/TM2_rate_iat.png` — log-IAT histogram and empirical CDF
+* `vis/TM2_length_stats.json` and `vis/TM2_rate_stats.json` — numerical summaries
+
+The included TM2 plans run TrafficManipulator's PSO over an evaluation budget
+of up to 1,000 packets, then write a complete 9,060-packet output capture with
+the remaining packets passed through. This keeps the demonstration practical
+while preserving the full-output invariants. Example figures and their JSON
+statistics are available under [`reference_outputs/`](reference_outputs/README.md).
+
+For a fast, cross-platform evaluation that does not require TrafficManipulator,
+run `python artifact/run_smoke.py` from the repository root. It executes the
+included packet-loss plan on the malicious capture and verifies the result.
 
 ### Quick CLI for streaming stages
 

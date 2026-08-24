@@ -48,20 +48,15 @@ This artifact supports reproducing:
 
 ---
 
-## Artifact Scope and Limitations
-
-### What This Artifact Provides
+## Artifact Capabilities
 
 - End-to-end implementation of **PGCL pretraining + fine-tuning**
 - Deterministic training given fixed seeds and identical inputs
 - YAML-configurable hyperparameters and runtime flags
 - Multi-dataset training via multiple CSV directories
-
-### What This Artifact Does NOT Include
-
-- Original proprietary/restricted datasets used in the paper
-- Released pretrained checkpoints
-- Large-scale sweeps / full reproduction of all compute-heavy variants
+- External train/validation/test split support for FlowManifest integration
+- Fine-tuned checkpoints, metadata, and held-out evaluation metrics
+- A deterministic three-phase CPU smoke dataset and configuration
 
 
 ---
@@ -89,7 +84,7 @@ scripts/
 configs/
 ├── train.yaml        # training hyperparameters (including two-stage finetune config)
 main.py               # CLI entrypoint (all runtime params passed via args)
-````
+```
 
 ---
 
@@ -131,6 +126,20 @@ Run the CPU training smoke test with:
 python -m unittest discover -s tests -v
 ```
 
+Run the executable three-phase CPU demonstration with:
+
+```bash
+python examples/generate_tiny_phase_splits.py --output-dir ../artifact_outputs/pgcl_data
+python main.py \
+  --train-config configs/smoke.yaml \
+  --train-csv ../artifact_outputs/pgcl_data/train.csv \
+  --val-csv ../artifact_outputs/pgcl_data/val.csv \
+  --test-csv ../artifact_outputs/pgcl_data/test.csv \
+  --output-dir ../artifact_outputs/pgcl \
+  --run-name smoke \
+  --device cpu
+```
+
 ### Expected Outputs
 
 After successful execution, PGCL will write:
@@ -148,6 +157,15 @@ After successful execution, PGCL will write:
   * scaler statistics / normalization parameters
   * full resolved config (YAML + CLI overrides)
   * `class_to_idx` mapping
+
+* `{output-dir}/{run-name}_{K}_{ckpt-name-without-ext}_finetuned.safetensors`
+  Restored best fine-tuned encoder and classification head
+
+* `{output-dir}/{run-name}_{K}_{ckpt-name-without-ext}_finetuned.meta.json`
+  Fine-tuned feature, scaler, architecture, and class metadata
+
+* `{output-dir}/{run-name}_{K}_{ckpt-name-without-ext}_metrics.json`
+  Validation and held-out test Accuracy, Macro-F1, Precision, and Recall
 
 These artifacts are sufficient to verify training completion and to reproduce evaluation metrics given the same inputs.
 

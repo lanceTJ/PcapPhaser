@@ -7,7 +7,7 @@ source .venv/bin/activate
 mkdir -p data/outroot vis
 
 pcapperturbator \
-  --in-root data/inroot \
+  --in-root demo_inputs \
   --out-root data/outroot/tm1_reorder \
   --backend threads \
   --workers 1 \
@@ -16,6 +16,6 @@ pcapperturbator \
   --verbose
 
 python scripts/reorder_cmp.py \
-  --before data/inroot/demo/cap_attack.pcap \
-  --after data/outroot/tm1_reorder/demo/cap_attack.pcap.pcap \
+  --before demo_inputs/demo/cap_attack.pcap \
+  --after data/outroot/tm1_reorder/demo/cap_attack.pcap \
   --out-json vis/TM1_reorder_stats.json

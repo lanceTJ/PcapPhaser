@@ -1,0 +1,30 @@
+{
+  "mode": "reorder",
+  "before": {
+    "path": "demo_inputs/demo/cap_attack.pcap",
+    "packet_count": 9060,
+    "total_packet_bytes": 1951264,
+    "first_ts": 1585632651.483304,
+    "last_ts": 1585633298.248084,
+    "duration_sec": 646.7647800445557,
+    "iat_count": 9059
+  },
+  "after": {
+    "path": "data/outroot/tm1_reorder/demo/cap_attack.pcap",
+    "packet_count": 9060,
+    "total_packet_bytes": 1951264,
+    "first_ts": 1585632651.483304,
+    "last_ts": 1585633298.248084,
+    "duration_sec": 646.7647800445557,
+    "iat_count": 9059
+  },
+  "interpretable_metrics": {
+    "packet_count_same": true,
+    "total_packet_bytes_delta": 0,
+    "same_position_packets": 7384,
+    "position_changed_packets": 1676,
+    "position_changed_ratio": 0.18498896247240618,
+    "iat_mean_before_sec": 0.07139472127658193,
+    "iat_mean_after_sec": 0.07139472127658193
+  }
+}

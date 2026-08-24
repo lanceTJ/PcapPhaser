@@ -31,10 +31,12 @@ def collect_pcaps(in_root: Path) -> list[Path]:
 
 def _out_paths(in_pcap: Path, in_root: Path, out_root: Path):
     rel = in_pcap.relative_to(in_root)
-    date_dir = rel.parts[0] if rel.parts else "unknown_date"
-    out_dir = out_root / date_dir
+    relative_dir = rel.parent
+    date_dir = str(relative_dir) if str(relative_dir) != "." else "root"
+    out_dir = out_root / relative_dir
     base_name = in_pcap.name
-    out_pcap = out_dir / f"{base_name}.pcap"
+    out_name = base_name if in_pcap.suffix.lower() == ".pcap" else f"{base_name}.pcap"
+    out_pcap = out_dir / out_name
     meta_json = out_dir / f"{base_name}.metadata.json"
     return date_dir, out_dir, out_pcap, meta_json
 
