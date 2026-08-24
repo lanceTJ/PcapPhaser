@@ -8,8 +8,7 @@ __pycache__/
 .venv/
 venv/
 
-# Test and temporary files
-tests/
+# Temporary files
 *.tmp
 *.bak
 .DS_Store

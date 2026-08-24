@@ -22,14 +22,23 @@ From the repository root:
 
 ```bash
 python -m venv .venv
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
 ```
 
-Activate the environment using the command appropriate for the operating
-system, then run:
+Activate the environment with the command for your shell:
 
 ```bash
+# Linux or macOS
+source .venv/bin/activate
+
+# Windows PowerShell
+.\.venv\Scripts\Activate.ps1
+```
+
+Then install the dependencies and run the evaluator:
+
+```bash
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
 python artifact/run_smoke.py
 ```
 

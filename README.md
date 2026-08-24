@@ -32,6 +32,21 @@ complete FlowManifest split workflow, and trains/evaluates PGCL on CPU.
 
 ```bash
 python -m venv .venv
+```
+
+Activate the environment with the command for your shell:
+
+```bash
+# Linux or macOS
+source .venv/bin/activate
+
+# Windows PowerShell
+.\.venv\Scripts\Activate.ps1
+```
+
+Then install the dependencies and run the evaluator:
+
+```bash
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 python artifact/run_smoke.py
