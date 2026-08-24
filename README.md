@@ -161,7 +161,7 @@ The CPU smoke configuration writes:
 ## Reproducibility controls
 
 - Fixed seeds for perturbation, splitting, support-set generation, and training
-- Sidecar perturbation metadata and input hashes
+- Sidecar perturbation metadata and demo-input SHA-256 records
 - Parent-flow and group-aware data isolation
 - Explicit YAML/INI/JSON configurations
 - Atomic model checkpoint and metrics writes
