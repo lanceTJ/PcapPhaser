@@ -1,0 +1,92 @@
+# Data split configuration
+# Parent-flow manifest-based split pipeline
+
+dataset:
+  name: CIC-IDS-2018
+  raw_dir: data/raw
+  processed_dir: data/processed
+
+split:
+  seed: 42
+  train_ratio: 0.64
+  val_ratio: 0.16
+  test_ratio: 0.2
+  split_unit: parent_flow
+  group_aware: true
+  group_key_priority:
+    - capture_id
+    - session_id
+    - device_id
+    - scenario_id
+  stratify_by_label: true
+
+variants:
+  generate_after_split: true
+  cases:
+    - origin
+    - case1_loss
+    - case2_retransmission
+    - case3_reordering
+    - case4_length_padding
+    - case5_timing_delay
+
+pretrain:
+  use_split: train
+  variants:
+    - origin
+  use_labels: false
+
+few_shot:
+  k: 50
+  seeds: [0, 1, 2, 3, 4]
+  label_balanced: true
+
+pa_ft:
+  variants:
+    origin: 0.5
+    case1_loss: 0.1
+    case2_retransmission: 0.1
+    case3_reordering: 0.1
+    case4_length_padding: 0.1
+    case5_timing_delay: 0.1
+  fixed_gradient_updates: true
+
+validation:
+  variants:
+    - origin
+    - case1_loss
+    - case2_retransmission
+    - case3_reordering
+    - case4_length_padding
+    - case5_timing_delay
+  selection_metric: avg_macro_f1_over_variants
+
+test:
+  variants:
+    - origin
+    - case1_loss
+    - case2_retransmission
+    - case3_reordering
+    - case4_length_padding
+    - case5_timing_delay
+
+sanitization:
+  drop_fields:
+    - src_ip
+    - dst_ip
+    - src_port
+    - dst_port
+    - src_mac
+    - dst_mac
+    - sni
+    - ip_id
+    - ip_checksum
+    - tcp_seq
+    - tcp_ack
+    - tcp_timestamp
+    - absolute_timestamp
+    - capture_id
+    - parent_flow_id
+    - group_id
+    - split
+    - variant

@@ -1,0 +1,40 @@
+[
+  {
+    "type": "rate_manip",
+    "pct": 0.1,
+    "params": {
+      "tm": {
+        "repo": "__REPO_ROOT__/external/TrafficManipulator",
+        "mimic_set": "__REPO_ROOT__/demo_assets/mimic_set.npy",
+        "normalizer": "__REPO_ROOT__/demo_assets/normalizer.pkl",
+        "init_pcap": "__REPO_ROOT__/demo_assets/init_benign.pcap"
+      },
+      "particle": {
+        "w": 0.6,
+        "c1": 1.49618,
+        "c2": 1.49618
+      },
+      "pso": {
+        "max_iter": 3,
+        "particle_num": 6,
+        "grp_size": 3
+      },
+      "manipulator": {
+        "grp_size": 100,
+        "min_time_extend": 2.0,
+        "max_time_extend": 4.0,
+        "max_cft_pkt": 0,
+        "max_crafted_pkt_prob": 0.0
+      },
+      "select": {
+        "mode": "flow_uniform"
+      },
+      "merge": {
+        "sort_by_ts": true
+      },
+      "verify": {
+        "tau_usec": 1
+      }
+    }
+  }
+]

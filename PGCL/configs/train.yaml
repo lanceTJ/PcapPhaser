@@ -1,0 +1,61 @@
+seed: 42
+
+# K-fold cross-validation (optional)
+# Set k_fold to enable k-fold mode. When enabled:
+#   - Data is first split into train/test (test_size)
+#   - K-fold CV is performed on the train set
+#   - Final model is retrained on full train set
+#   - Test set is used only for final evaluation
+k_fold: null        # Number of folds (e.g., 5). null = disabled (use fixed train/val)
+k_fold_seed: null   # Seed for fold shuffling. null = use main seed
+
+data:
+  label_col: Label
+  test_size: 0.2
+  stratify: true
+  corr_threshold: 0.9
+  max_samples_per_class: 40000
+
+dataloader:
+  batch_size: 512
+  num_workers: 40
+  pin_memory: true
+  persistent_workers: true
+
+model:
+  encoder_out_dim: 256
+  proj_out_dim: 128
+  dropout: 0.1
+
+pretrain:
+  epochs: 50
+  lr: 0.0005
+  weight_decay: 0.0001
+  temperature: 0.1
+  noise_std: 0.05
+  feat_drop_prob: 0.1
+  patience: 6
+  max_grad_norm: 1.0
+  use_amp: true
+  scheduler:
+    name: cosine
+    t_max: 50
+
+finetune:
+  enabled: true
+
+  stage_a:
+    epochs: 10
+    lr: 0.001
+    weight_decay: 0.0001
+    t_max: 10
+    unfreeze_encoder: false
+
+  stage_b:
+    enabled: true
+    epochs: 30
+    lr: 0.00005
+    fc_lr: 0.0005
+    weight_decay: 0.0001
+    t_max: 30
+    unfreeze_encoder: true

@@ -1,0 +1,8 @@
+/external/
+*.pyc
+.venv/
+/*.egg-info/
+/vis/
+/logs/
+/data/outroot/
+/demo_assets/

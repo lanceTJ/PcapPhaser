@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual Environment
+.venv/
+venv/
+
+# Test and temporary files
+tests/
+*.tmp
+*.bak
+.DS_Store
+
+# Docs (personal use only, not part of open science)
+docs/
+
+# Data directories
+data/
+logs/
+
+# Build artifacts
+*.egg-info/
+dist/
+build/

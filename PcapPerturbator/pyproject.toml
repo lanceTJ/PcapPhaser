@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pcapperturbator"
+version = "0.2.0"
+description = "PCAP perturbation toolkit with TrafficManipulator-assisted length/rate stages"
+authors = [{name = "FlowPhaser Team"}]
+requires-python = ">=3.9"
+dependencies = [
+  "numpy>=1.24.0",
+  "scapy>=2.5.0",
+  "tqdm>=4.66.0",
+]
+
+[tool.setuptools]
+packages = ["pcapperturbator"]
+
+[project.scripts]
+pcapperturbator = "pcapperturbator.cli:main"

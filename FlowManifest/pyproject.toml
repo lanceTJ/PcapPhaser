@@ -1,0 +1,80 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flow-manifest"
+version = "1.0.0"
+description = "Parent-flow manifest-based split pipeline for reproducible, leakage-free traffic analysis"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.8"
+authors = [
+    {name = "FlowPhaser Team"}
+]
+keywords = ["machine-learning", "traffic-analysis", "data-splitting", "reproducible-research"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    "numpy>=1.19",
+    "pandas>=1.0",
+    "scikit-learn>=0.24",
+    "pyyaml>=5.4",
+]
+
+[project.optional-dependencies]
+ml = [
+    "torch>=1.9",
+]
+pcap = [
+    "scapy>=2.5",
+]
+all = [
+    "torch>=1.9",
+    "scapy>=2.5",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "black",
+    "isort",
+    "mypy",
+]
+
+[project.scripts]
+flowmanifest = "FlowManifest.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/lanceTJ/PcapPhaser"
+Documentation = "https://github.com/lanceTJ/PcapPhaser/tree/master/FlowManifest"
+Repository = "https://github.com/lanceTJ/PcapPhaser"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"FlowManifest" = ["configs/*.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+
+[tool.black]
+line-length = 100
+target-version = ['py38', 'py39', 'py310', 'py311']
+
+[tool.isort]
+profile = "black"
+line-length = 100

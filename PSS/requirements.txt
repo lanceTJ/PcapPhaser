@@ -1,0 +1,6 @@
+# requirements.txt
+numpy>=1.26.0
+numba>=0.60.0
+pandas>=2.2.0
+scapy>=2.5.0  # For pcap parsing
+pyyaml>=6.0.2  # For YAML rules in labeling

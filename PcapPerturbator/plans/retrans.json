@@ -1,0 +1,7 @@
+[
+  {
+    "type": "retransmit",
+    "pct": 0.1,
+    "params": {}
+  }
+]
